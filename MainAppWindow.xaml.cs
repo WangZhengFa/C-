@@ -297,7 +297,7 @@ namespace FoodEnterpriseIMS
         /// </summary>
         private void TreeMenu_NodeAddRequested(object sender, RoutedEventArgs e)
         {
-            var parentNode = e.Source as TreeNode;
+            var parentNode = (e as TreeNodeRoutedEventArgs)?.Node ?? e.Source as TreeNode;
             var newNode = new TreeNode
             {
                 ParentCode = parentNode?.Code,
@@ -311,7 +311,7 @@ namespace FoodEnterpriseIMS
         /// </summary>
         private void TreeMenu_NodeEditRequested(object sender, RoutedEventArgs e)
         {
-            var node = e.Source as TreeNode;
+            var node = (e as TreeNodeRoutedEventArgs)?.Node ?? e.Source as TreeNode;
             if (node == null || string.IsNullOrWhiteSpace(node.Code)) return;
             OpenNodeEditWindow(node, MenuTreeKey, isNew: false);
         }
@@ -321,7 +321,7 @@ namespace FoodEnterpriseIMS
         /// </summary>
         private void TreeMenu_NodeDeleteRequested(object sender, RoutedEventArgs e)
         {
-            var node = e.Source as TreeNode;
+            var node = (e as TreeNodeRoutedEventArgs)?.Node ?? e.Source as TreeNode;
             if (node == null || string.IsNullOrWhiteSpace(node.Code)) return;
 
             var result = MessageBox.Show($"确定删除节点 [{node.Title}] 吗？", "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Question);

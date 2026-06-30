@@ -164,7 +164,7 @@ namespace FoodEnterpriseIMS.Widgets
         private void RaiseNodeEvent(RoutedEvent routedEvent)
         {
             var node = BuildNodeFromSelectedItem();
-            var args = new RoutedEventArgs(routedEvent, node);
+            var args = new TreeNodeRoutedEventArgs(routedEvent, node);
             RaiseEvent(args);
         }
 
