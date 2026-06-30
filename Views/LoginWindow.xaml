@@ -1,0 +1,170 @@
+<Window x:Class="食品信息管理系统.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Height="190" Width="340"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        Background="#E8E8E8">
+
+    <Border BorderBrush="#999999" BorderThickness="1" Background="#E8E8E8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="28"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="22"/>
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏 -->
+            <Grid Grid.Row="0" Background="#E8E8E8" MouseLeftButtonDown="Window_MouseLeftButtonDown">
+                <TextBlock Text="食品信息管理系统 - 登录器" FontSize="18" Foreground="#333333"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- 主内容区 -->
+            <Grid Grid.Row="1" Margin="12,8,12,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Logo -->
+                <Border Grid.Column="0"
+                        Width="120"
+                        Height="120"
+                        BorderBrush="#888888"
+                        BorderThickness="1"
+                        Background="White"
+                        VerticalAlignment="Top">
+                    <Image Source="../Resources/Images/logo.png" Stretch="Uniform"/>
+                </Border>
+
+                <!-- 登录表单 -->
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top">
+                    <!-- 账号行 -->
+                    <Grid Height="30" VerticalAlignment="Top">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="50"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="账号：" FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
+                        <Border Grid.Column="1" BorderBrush="#777777" BorderThickness="1" Background="White">
+                            <TextBox x:Name="UsernameEntry"
+                                     FontSize="13"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     Padding="6,2"
+                                     VerticalContentAlignment="Center"
+                                     TextChanged="OnUsernameChanged"/>
+                        </Border>
+                    </Grid>
+
+                    <!-- 密码行 -->
+                    <Grid Height="30" Margin="0,4,0,0" VerticalAlignment="Top">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="50"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="密码：" FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
+                        <Border Grid.Column="1" BorderBrush="#777777" BorderThickness="1" Background="White">
+                            <PasswordBox x:Name="PasswordEntry"
+                                         FontSize="13"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Padding="6,2"
+                                         VerticalContentAlignment="Center"/>
+                        </Border>
+                    </Grid>
+
+                    <!-- 复选框行 -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Height="24" VerticalAlignment="Top">
+                        <CheckBox x:Name="SaveUsernameCheck"
+                                  Checked="OnSaveUsernameChanged"
+                                  Unchecked="OnSaveUsernameChanged"
+                                  FontSize="12"
+                                  VerticalAlignment="Center"
+                                  Content="账号"/>
+                        <CheckBox x:Name="SavePasswordCheck"
+                                  Checked="OnSavePasswordChanged"
+                                  Unchecked="OnSavePasswordChanged"
+                                  FontSize="12"
+                                  Margin="12,0,0,0"
+                                  VerticalAlignment="Center"
+                                  Content="密码"/>
+                        <CheckBox x:Name="AutoLoginCheck"
+                                  FontSize="12"
+                                  Margin="12,0,0,0"
+                                  VerticalAlignment="Center"
+                                  Content="自动"/>
+                    </StackPanel>
+
+                    <!-- 按钮行 -->
+                    <Grid Margin="0,4,0,0" Height="26" VerticalAlignment="Top">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0"
+                                x:Name="SettingsBtn"
+                                Content="设置"
+                                FontSize="12"
+                                Background="#3487D6"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Padding="0"
+                                Margin="0,0,4,0"
+                                Click="OnSettingsClicked"/>
+                        <Button Grid.Column="1"
+                                x:Name="LoginBtn"
+                                Content="登录"
+                                FontSize="12"
+                                Background="#4CAF50"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Padding="0"
+                                Margin="4,0"
+                                Click="OnLoginClicked"/>
+                        <Button Grid.Column="2"
+                                x:Name="ExitBtn"
+                                Content="退出"
+                                FontSize="12"
+                                Background="#5A9A6A"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Padding="0"
+                                Margin="4,0,0,0"
+                                Click="OnExitClicked"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <!-- 错误提示 -->
+            <TextBlock Grid.Row="2"
+                       x:Name="MessageLabel"
+                       Foreground="#E53935"
+                       FontSize="12"
+                       HorizontalAlignment="Center"
+                       Visibility="Collapsed"
+                       Margin="0,0,0,2"/>
+
+            <!-- 状态栏 -->
+            <Border Grid.Row="3" Background="#D8D8D8" BorderBrush="#AAAAAA" BorderThickness="0,1,0,0">
+                <Grid Margin="8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="CountdownLabel" Text="" FontSize="11" Foreground="#E53935" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed"/>
+                    <TextBlock Grid.Column="1" x:Name="VersionLabel" Text="版本号: -" FontSize="11" Foreground="#333333" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" x:Name="ModeLabel" Text="MySQL 模式: -" FontSize="11" Foreground="#333333" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="3" x:Name="TimeLabel" Text="-" FontSize="11" Foreground="#333333" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
