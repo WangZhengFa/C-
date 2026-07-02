@@ -11,3 +11,16 @@ __pycache__/
 *.pyc
 .next/
 coverage/
+
+# .NET build artifacts
+bin/
+obj/
+
+# User/machine specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider and VS caches
+.vs/
