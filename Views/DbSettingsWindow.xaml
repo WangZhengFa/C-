@@ -40,13 +40,16 @@
             <TextBlock Text="主机：" VerticalAlignment="Center" FontSize="12" Padding="6,0"/>
         </Border>
         <Border Grid.Row="1" Grid.Column="1" Background="#D8F0D8">
-            <TextBox x:Name="HostEntry" FontSize="12" VerticalContentAlignment="Center" Padding="4,0" BorderThickness="0" Background="Transparent"/>
+            <ComboBox x:Name="HostEntry" FontSize="12" VerticalContentAlignment="Center" Padding="2,0" BorderThickness="0" Background="Transparent"
+                      IsEditable="True" IsTextSearchEnabled="True"/>
         </Border>
         <Border Grid.Row="1" Grid.Column="2" Background="#B8E0B8" Margin="1,0,0,0">
             <TextBlock Text="端口：" VerticalAlignment="Center" FontSize="12" Padding="6,0"/>
         </Border>
         <Border Grid.Row="1" Grid.Column="3" Background="#D8F0D8">
-            <TextBox x:Name="PortEntry" FontSize="12" VerticalContentAlignment="Center" Padding="4,0" BorderThickness="0" Background="Transparent"/>
+            <ComboBox x:Name="PortEntry" FontSize="12" VerticalContentAlignment="Center" Padding="2,0" BorderThickness="0" Background="Transparent"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      PreviewTextInput="NumericOnly_PreviewTextInput"/>
         </Border>
 
         <!-- 第二行：用户 + 密码 -->
@@ -68,7 +71,8 @@
             <TextBlock Text="库名：" VerticalAlignment="Center" FontSize="12" Padding="6,0"/>
         </Border>
         <Border Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Background="#D8F0D8">
-            <TextBox x:Name="DatabaseEntry" FontSize="12" VerticalContentAlignment="Center" Padding="4,0" BorderThickness="0" Background="Transparent"/>
+            <ComboBox x:Name="DatabaseEntry" FontSize="12" VerticalContentAlignment="Center" Padding="2,0" BorderThickness="0" Background="Transparent"
+                      IsEditable="True" IsTextSearchEnabled="True"/>
         </Border>
 
         <!-- 第四行：自动登录倒计时 -->
@@ -76,7 +80,9 @@
             <TextBlock Text="自动登录倒计时：" VerticalAlignment="Center" FontSize="12" Padding="6,0"/>
         </Border>
         <Border Grid.Row="7" Grid.Column="1" Background="#D8F0D8">
-            <TextBox x:Name="CountdownEntry" FontSize="12" VerticalContentAlignment="Center" Padding="4,0" BorderThickness="0" Background="Transparent"/>
+            <ComboBox x:Name="CountdownEntry" FontSize="12" VerticalContentAlignment="Center" Padding="2,0" BorderThickness="0" Background="Transparent"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      PreviewTextInput="NumericOnly_PreviewTextInput"/>
         </Border>
         <Border Grid.Row="7" Grid.Column="2" Background="#B8E0B8" Margin="1,0,0,0">
             <TextBlock Text="秒" VerticalAlignment="Center" FontSize="12" Padding="6,0" HorizontalAlignment="Center"/>

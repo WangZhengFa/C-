@@ -54,10 +54,12 @@
 
             <TextBlock Grid.Row="1" Grid.Column="0" Text="取样日期：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <DatePicker Grid.Row="1" Grid.Column="1" x:Name="SamplingDatePicker" VerticalContentAlignment="Center"
+                        SelectedDateFormat="Short"
                         SelectedDate="{Binding SamplingDate, Mode=TwoWay}"/>
 
             <TextBlock Grid.Row="1" Grid.Column="2" Text="检验日期：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <DatePicker Grid.Row="1" Grid.Column="3" x:Name="InspectionDatePicker" VerticalContentAlignment="Center"
+                        SelectedDateFormat="Short"
                         SelectedDate="{Binding InspectionDate, Mode=TwoWay}"/>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="检品名称：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
@@ -74,19 +76,23 @@
 
             <TextBlock Grid.Row="3" Grid.Column="2" Text="取样量：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBox Grid.Row="3" Grid.Column="3" x:Name="SamplingQuantityText" VerticalContentAlignment="Center"
+                     PreviewTextInput="DecimalInput_PreviewTextInput"
                      Text="{Binding SamplingQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="4" Grid.Column="0" Text="代表量：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBox Grid.Row="4" Grid.Column="1" x:Name="RepresentativeQuantityText" VerticalContentAlignment="Center"
+                     PreviewTextInput="DecimalInput_PreviewTextInput"
                      Text="{Binding RepresentativeQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="4" Grid.Column="2" Text="检品来源：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBox Grid.Row="4" Grid.Column="3" x:Name="SampleSourceText" VerticalContentAlignment="Center"
-                     Text="{Binding SampleSource, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Grid.Row="4" Grid.Column="3" x:Name="SampleSourceCombo" VerticalContentAlignment="Center"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      Text="{Binding SampleSource, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="5" Grid.Column="0" Text="取样人：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBox Grid.Row="5" Grid.Column="1" x:Name="SamplerText" VerticalContentAlignment="Center"
-                     Text="{Binding Sampler, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Grid.Row="5" Grid.Column="1" x:Name="SamplerCombo" VerticalContentAlignment="Center"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      Text="{Binding Sampler, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="6" Grid.Column="0" Text="备注：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBox Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" x:Name="RemarkText" VerticalContentAlignment="Top" TextWrapping="Wrap" AcceptsReturn="True" Height="80" Grid.RowSpan="2"

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Linq;
 using FoodEnterpriseIMS;
 using 食品信息管理系统.Services;
 
@@ -74,6 +75,7 @@ namespace 食品信息管理系统.Views
         /// </summary>
         private async void LoadSavedSettings()
         {
+            PopulateUsernameCandidates();
             UsernameEntry.Text = LocalSettingsService.SavedUsername;
             SaveUsernameCheck.IsChecked = LocalSettingsService.SaveUsernameChecked;
             SavePasswordCheck.IsChecked = LocalSettingsService.SavePasswordChecked;
@@ -103,6 +105,13 @@ namespace 食品信息管理系统.Views
         /// </summary>
         private void CountdownTimer_Tick(object sender, EventArgs e)
         {
+            if (_isLoggingIn || !_isAutoLoginInProgress)
+            {
+                _countdownTimer.Stop();
+                CountdownLabel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
             _countdownSeconds--;
             if (_countdownSeconds <= 0)
             {
@@ -147,9 +156,21 @@ namespace 食品信息管理系统.Views
             }
         }
 
-        private void OnUsernameChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        private void PopulateUsernameCandidates()
         {
-            // 可在此扩展账号历史下拉功能
+            UsernameEntry.Items.Clear();
+
+            var recent = LocalSettingsService.RecentUsernames;
+            foreach (var user in recent)
+            {
+                UsernameEntry.Items.Add(user);
+            }
+
+            var saved = LocalSettingsService.SavedUsername;
+            if (!string.IsNullOrWhiteSpace(saved) && !recent.Any(x => string.Equals(x, saved, StringComparison.OrdinalIgnoreCase)))
+            {
+                UsernameEntry.Items.Add(saved);
+            }
         }
 
         private void OnSaveUsernameChanged(object sender, RoutedEventArgs e)
@@ -175,6 +196,9 @@ namespace 食品信息管理系统.Views
 
         private async void OnLoginClicked(object sender, RoutedEventArgs e)
         {
+            _isAutoLoginInProgress = false;
+            _countdownTimer.Stop();
+            CountdownLabel.Visibility = Visibility.Collapsed;
             await PerformLoginAsync();
         }
 
@@ -188,10 +212,13 @@ namespace 食品信息管理系统.Views
                 var username = UsernameEntry.Text?.Trim() ?? string.Empty;
                 var password = PasswordEntry.Password ?? string.Empty;
 
+                _countdownTimer.Stop();
+                CountdownLabel.Visibility = Visibility.Collapsed;
+
                 SetControlsEnabled(false);
                 MessageLabel.Visibility = Visibility.Collapsed;
 
-                var (success, message, nickname, roleId) = await AuthService.ValidateAsync(username, password);
+                var (success, message, nickname, roleId, userId) = await AuthService.ValidateAsync(username, password);
 
                 if (success)
                 {
@@ -202,7 +229,8 @@ namespace 食品信息管理系统.Views
                     {
                         ["user_name"] = displayName,
                         ["username"] = username,
-                        ["role_id"] = roleId
+                        ["role_id"] = roleId,
+                        ["user_id"] = userId
                     };
                     var mainWindow = new MainAppWindow(config);
                     mainWindow.Show();
@@ -232,6 +260,7 @@ namespace 食品信息管理系统.Views
             LocalSettingsService.SaveUsernameChecked = SaveUsernameCheck.IsChecked == true;
             LocalSettingsService.SavePasswordChecked = SavePasswordCheck.IsChecked == true;
             LocalSettingsService.AutoLoginChecked = AutoLoginCheck.IsChecked == true;
+            LocalSettingsService.AddUsernameHistory(username);
 
             if (SaveUsernameCheck.IsChecked == true)
             {

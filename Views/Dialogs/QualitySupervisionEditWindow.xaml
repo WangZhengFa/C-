@@ -49,11 +49,13 @@
 
             <TextBlock Grid.Row="0" Grid.Column="2" Text="发现日期：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <DatePicker Grid.Row="0" Grid.Column="3" x:Name="DiscoveryDatePicker" VerticalContentAlignment="Center"
+                        SelectedDateFormat="Short"
                         SelectedDate="{Binding DiscoveryDate, Mode=TwoWay}"/>
 
             <TextBlock Grid.Row="1" Grid.Column="0" Text="项目类别：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBox Grid.Row="1" Grid.Column="1" x:Name="ProjectCategoryText" VerticalContentAlignment="Center"
-                     Text="{Binding ProjectCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="ProjectCategoryCombo" VerticalContentAlignment="Center"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      Text="{Binding ProjectCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="1" Grid.Column="2" Text="项目名称：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBox Grid.Row="1" Grid.Column="3" x:Name="ProjectNameText" VerticalContentAlignment="Center"
@@ -65,6 +67,7 @@
 
             <TextBlock Grid.Row="2" Grid.Column="2" Text="数量：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBox Grid.Row="2" Grid.Column="3" x:Name="QuantityText" VerticalContentAlignment="Center"
+                     PreviewTextInput="DecimalInput_PreviewTextInput"
                      Text="{Binding Quantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="3" Grid.Column="0" Text="不符合项：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
@@ -77,15 +80,18 @@
 
             <TextBlock Grid.Row="7" Grid.Column="0" Text="整改期限：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <DatePicker Grid.Row="7" Grid.Column="1" x:Name="RectificationDeadlinePicker" VerticalContentAlignment="Center"
+                        SelectedDateFormat="Short"
                         SelectedDate="{Binding RectificationDeadline, Mode=TwoWay}"/>
 
             <TextBlock Grid.Row="7" Grid.Column="2" Text="整改结果：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBox Grid.Row="7" Grid.Column="3" x:Name="RectificationResultText" VerticalContentAlignment="Center"
-                     Text="{Binding RectificationResult, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Grid.Row="7" Grid.Column="3" x:Name="RectificationResultCombo" VerticalContentAlignment="Center"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      Text="{Binding RectificationResult, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="8" Grid.Column="0" Text="监督人：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBox Grid.Row="8" Grid.Column="1" x:Name="SupervisorText" VerticalContentAlignment="Center"
-                     Text="{Binding Supervisor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Grid.Row="8" Grid.Column="1" x:Name="SupervisorCombo" VerticalContentAlignment="Center"
+                      IsEditable="True" IsTextSearchEnabled="True"
+                      Text="{Binding Supervisor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
             <TextBlock Grid.Row="8" Grid.Column="2" Text="已审核：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <CheckBox Grid.Row="8" Grid.Column="3" x:Name="IsReviewedCheck" VerticalAlignment="Center"

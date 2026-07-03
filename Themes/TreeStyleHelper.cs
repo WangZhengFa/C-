@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using FoodEnterpriseIMS.Services;
 
 namespace FoodEnterpriseIMS.Themes
@@ -47,17 +48,26 @@ namespace FoodEnterpriseIMS.Themes
             var cfg = ReadTreeGlobalConfig(db);
             int indent = (int)cfg["indent"];
             int rowH = (int)cfg["row_height"];
-            bool hideRoot = (bool)cfg["hide_root_branch"];
+            int indicatorSize = (int)cfg["indicator_size"];
+            bool hideRootBranch = (bool)cfg["hide_root_branch"];
+            bool useSysStyle = (bool)cfg["classic_use_system"];
+
+            var leftPadding = Math.Max(0, indent / 2.0);
 
             // 通过 ItemContainerStyle 设置缩进、行高、分支线
             var itemStyle = new Style(typeof(TreeViewItem), tree.ItemContainerStyle);
             itemStyle.Setters.Add(new Setter(TreeViewItem.MinHeightProperty, (double)rowH));
-            itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(2, 0, 0, 0)));
+            itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(leftPadding, 0, 0, 0)));
             tree.ItemContainerStyle = itemStyle;
 
-            // WPF TreeView 不直接暴露 Indentation/RootLinesVisibility，
-            // 后续可在 ControlTemplate 中通过 TreeViewItem 模板进一步定制。
+            if (useSysStyle)
+            {
+                tree.BorderThickness = new Thickness(0);
+                tree.Background = SystemColors.WindowBrush;
+            }
+
             tree.UpdateLayout();
+            ApplyRuntimeVisualOverrides(tree, indicatorSize, hideRootBranch);
         }
 
         /// <summary>
@@ -122,6 +132,57 @@ namespace FoodEnterpriseIMS.Themes
                 return null;
             return parent.ItemContainerGenerator.ContainerFromItem(item) as TreeViewItem
                 ?? parent.ItemContainerGenerator.ContainerFromIndex(parent.Items.IndexOf(item)) as TreeViewItem;
+        }
+
+        private static void ApplyRuntimeVisualOverrides(TreeView tree, int indicatorSize, bool hideRootBranch)
+        {
+            var safeIndicatorSize = Math.Max(8, Math.Min(40, indicatorSize));
+
+            foreach (var item in tree.Items)
+            {
+                if (GetTreeViewItem(tree, item) is TreeViewItem tvi)
+                {
+                    ApplyRuntimeVisualOverrides(tvi, 0, safeIndicatorSize, hideRootBranch);
+                }
+            }
+        }
+
+        private static void ApplyRuntimeVisualOverrides(TreeViewItem item, int depth, int indicatorSize, bool hideRootBranch)
+        {
+            item.ApplyTemplate();
+
+            // TreeViewItem 模板中的 Expander 内部是固定 16x16，
+            // 通过缩放保持模板兼容同时支持运行时尺寸配置。
+            if (item.Template.FindName("Expander", item) is FrameworkElement expander)
+            {
+                var scale = indicatorSize / 16.0;
+                expander.LayoutTransform = new ScaleTransform(scale, scale);
+            }
+
+            if (item.Template.FindName("ItemsHost", item) is FrameworkElement itemsHost)
+            {
+                itemsHost.Margin = new Thickness(indicatorSize + 3, 0, 0, 0);
+            }
+
+            var hideCurrentBranch = hideRootBranch && depth == 0;
+            if (item.Template.FindName("HorLn", item) is Rectangle horLine)
+            {
+                horLine.Visibility = hideCurrentBranch ? Visibility.Collapsed : Visibility.Visible;
+            }
+
+            if (item.Template.FindName("VerLn", item) is Rectangle verLine)
+            {
+                verLine.Visibility = hideCurrentBranch ? Visibility.Collapsed : Visibility.Visible;
+            }
+
+            item.UpdateLayout();
+            foreach (var child in item.Items)
+            {
+                if (GetTreeViewItem(item, child) is TreeViewItem childItem)
+                {
+                    ApplyRuntimeVisualOverrides(childItem, depth + 1, indicatorSize, hideRootBranch);
+                }
+            }
         }
     }
 }

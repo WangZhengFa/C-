@@ -37,7 +37,8 @@
             <TextBox Grid.Row="1" Grid.Column="1" x:Name="TitleText" VerticalContentAlignment="Center"/>
 
             <TextBlock Grid.Row="1" Grid.Column="2" Text="同级位置：" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBox Grid.Row="1" Grid.Column="3" x:Name="SortOrderText" VerticalContentAlignment="Center"/>
+            <TextBox Grid.Row="1" Grid.Column="3" x:Name="SortOrderText" VerticalContentAlignment="Center"
+                     MaxLength="4" PreviewTextInput="NumericOnly_PreviewTextInput"/>
         </Grid>
 
         <!-- 其他字段标题 -->
@@ -46,10 +47,10 @@
         <!-- DataGrid 工具栏 -->
         <Border Grid.Row="2" Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="0,1,0,1" Margin="0,0,0,4">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="5,0">
-                <Button Content="新增行" Height="26" Width="70" Margin="4,0" Click="AddRowButton_Click"/>
-                <Button Content="删除选中行" Height="26" Width="80" Margin="4,0" Click="DeleteRowButton_Click"/>
-                <Button Content="添加菜单路径" Height="26" Width="90" Margin="4,0" Click="AddMenuPathButton_Click"/>
-                <Button Content="添加组件路径(C#)" Height="26" Width="110" Margin="4,0" Click="AddComponentPathButton_Click"/>
+                <Button x:Name="AddRowButton" Content="新增行" Height="26" Width="70" Margin="4,0" Click="AddRowButton_Click"/>
+                <Button x:Name="DeleteRowButton" Content="删除选中行" Height="26" Width="80" Margin="4,0" Click="DeleteRowButton_Click"/>
+                <Button x:Name="AddMenuPathButton" Content="添加菜单路径" Height="26" Width="90" Margin="4,0" Click="AddMenuPathButton_Click"/>
+                <Button x:Name="AddComponentPathButton" Content="选择模块窗体(C#)" Height="26" Width="120" Margin="4,0" Click="AddComponentPathButton_Click"/>
             </StackPanel>
         </Border>
 

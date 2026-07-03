@@ -1,4 +1,7 @@
 using System;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace FoodEnterpriseIMS.Helpers
 {
@@ -7,6 +10,21 @@ namespace FoodEnterpriseIMS.Helpers
     /// </summary>
     public static class WeatherHelper
     {
+        private static readonly HttpClient Http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        private static string _city = "北京";
+
+        private sealed class WeatherSnapshot
+        {
+            public string City { get; init; } = string.Empty;
+            public string Description { get; init; } = string.Empty;
+            public string TemperatureText { get; init; } = string.Empty;
+            public DateTime UpdatedAt { get; init; } = DateTime.Now;
+        }
+
         public static event Action<object>? WeatherUpdated;
         public static event Action<string>? WeatherError;
 
@@ -15,7 +33,13 @@ namespace FoodEnterpriseIMS.Helpers
         /// </summary>
         public static void SetCity(string city)
         {
-            // TODO: 实现城市设置
+            if (string.IsNullOrWhiteSpace(city))
+            {
+                WeatherError?.Invoke("城市名称不能为空");
+                return;
+            }
+
+            _city = city.Trim();
         }
 
         /// <summary>
@@ -23,8 +47,7 @@ namespace FoodEnterpriseIMS.Helpers
         /// </summary>
         public static void RefreshWeather()
         {
-            // TODO: 实现天气刷新
-            WeatherError?.Invoke("未实现天气接口");
+            _ = RefreshWeatherInternalAsync();
         }
 
         /// <summary>
@@ -32,8 +55,50 @@ namespace FoodEnterpriseIMS.Helpers
         /// </summary>
         public static string FormatWeatherDisplay(object data)
         {
-            // TODO: 实现天气显示格式化
+            if (data is WeatherSnapshot snapshot)
+            {
+                return $"{snapshot.City} {snapshot.TemperatureText} {snapshot.Description}";
+            }
+
             return data?.ToString() ?? "🌤️ 加载中...";
+        }
+
+        private static async Task RefreshWeatherInternalAsync()
+        {
+            try
+            {
+                var url = $"https://wttr.in/{Uri.EscapeDataString(_city)}?format=j1";
+                var json = await Http.GetStringAsync(url).ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
+
+                var root = doc.RootElement;
+                var current = root.GetProperty("current_condition")[0];
+                var temperature = current.GetProperty("temp_C").GetString() ?? "--";
+                var weatherDesc = current.GetProperty("weatherDesc")[0].GetProperty("value").GetString() ?? "--";
+
+                var snapshot = new WeatherSnapshot
+                {
+                    City = _city,
+                    Description = weatherDesc,
+                    TemperatureText = $"{temperature}°C",
+                    UpdatedAt = DateTime.Now
+                };
+
+                WeatherUpdated?.Invoke(snapshot);
+            }
+            catch (Exception ex)
+            {
+                var fallback = new WeatherSnapshot
+                {
+                    City = _city,
+                    Description = "天气不可用",
+                    TemperatureText = "--°C",
+                    UpdatedAt = DateTime.Now
+                };
+
+                WeatherUpdated?.Invoke(fallback);
+                WeatherError?.Invoke($"天气刷新失败: {ex.Message}");
+            }
         }
     }
 }

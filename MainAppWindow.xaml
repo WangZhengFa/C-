@@ -33,6 +33,8 @@
                     <Label Style="{StaticResource MutedLabel}"> | </Label>
                     <Label x:Name="LblRuntimeMode" Style="{StaticResource MutedLabel}" Content="网络版"/>
                     <Label Style="{StaticResource MutedLabel}"> | </Label>
+                    <Label x:Name="LblWeather" Style="{StaticResource MutedLabel}" Content="天气：加载中"/>
+                    <Label Style="{StaticResource MutedLabel}"> | </Label>
                     <Label x:Name="LblUser" Style="{StaticResource MutedLabel}"/>
                     <Label Style="{StaticResource MutedLabel}"> | </Label>
                     <Label x:Name="LblVersion" Style="{StaticResource MutedLabel}"/>
@@ -74,14 +76,8 @@
                     <Label Grid.Row="0" x:Name="LblPageTitle" Style="{StaticResource SectionTitleLabel}"
                            Margin="6,0,6,0" HorizontalAlignment="Left" VerticalAlignment="Center"
                            Content=""/>
-                    <!-- 内容容器 -->
-                    <TabControl Grid.Row="1" x:Name="ContentArea" BorderThickness="0" Background="Transparent">
-                        <TabControl.ItemContainerStyle>
-                            <Style TargetType="TabItem">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                            </Style>
-                        </TabControl.ItemContainerStyle>
-                    </TabControl>
+                    <!-- 内容容器（单页承载，不显示标签头） -->
+                    <ContentControl Grid.Row="1" x:Name="ContentArea"/>
                 </Grid>
             </Border>
         </Grid>

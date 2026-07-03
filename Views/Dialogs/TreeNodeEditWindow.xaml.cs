@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using FoodEnterpriseIMS.TreeCore;
 using MySqlConnector;
 
@@ -22,10 +24,46 @@ namespace 食品信息管理系统.Views.Dialogs
         private readonly ObservableCollection<PayloadEntry> _displayEntries = new();
         private static readonly HashSet<string> CSharpKeys = new(StringComparer.OrdinalIgnoreCase)
         {
-            "menu_key",
-            "menu_path",
-            "component_path",
+            "csharp_component_path",
             "csharp_class"
+        };
+        private static readonly Dictionary<string, string> PageDisplayNameMap = new(StringComparer.Ordinal)
+        {
+            ["CommissionedOrderPage"] = "委托订单",
+            ["CommonDictFieldDefsPage"] = "字典字段定义",
+            ["CustomerInfoPage"] = "客户信息",
+            ["DataAnalysisPage"] = "数据分析",
+            ["DocumentManagementPage"] = "文件管理",
+            ["EmployeeInfoPage"] = "员工信息",
+            ["ExamManagementPage"] = "考试管理",
+            ["ExamQuestionBankPage"] = "考试题库",
+            ["ExternalSamplingPage"] = "外部抽检",
+            ["FoodCategoriesPage"] = "食品分类",
+            ["GeneralDictionaryPage"] = "通用字典",
+            ["InspectionParamsPage"] = "检验参数",
+            ["MaterialInfoPage"] = "物料信息",
+            ["NutritionLabelPage"] = "营养标签",
+            ["NutritionParamsPage"] = "营养参数",
+            ["OverpackagingPage"] = "过度包装",
+            ["ProcessDataPage"] = "工序数据",
+            ["ProcessParamsPage"] = "工序参数",
+            ["ProductBarcodePage"] = "产品条码",
+            ["ProductInfoPage"] = "产品信息",
+            ["QualitySupervisionPage"] = "质量监督",
+            ["ReportDataPage"] = "报告数据",
+            ["ReportIssuancePage"] = "报告发放",
+            ["ReportNumberingPage"] = "报告编号",
+            ["RetentionManagementPage"] = "留样管理",
+            ["SampleDistributionPage"] = "样品分发",
+            ["SamplingRecordPage"] = "取样记录",
+            ["SealStampPage"] = "印章管理",
+            ["SelfCheckDataPage"] = "自检数据",
+            ["StandardRegulationsPage"] = "标准法规",
+            ["SystemConfigPage"] = "系统配置",
+            ["TypeInspectionPage"] = "型式检验",
+            ["UpdateManagementPage"] = "更新管理",
+            ["UserManagementPage"] = "用户管理",
+            ["VersionManagementPage"] = "版本管理"
         };
 
         public bool Saved { get; private set; }
@@ -38,7 +76,20 @@ namespace 食品信息管理系统.Views.Dialogs
             _isNew = isNew;
             _isCSharpMode = treeKey == "system_menu";
 
+            DataObject.AddPastingHandler(SortOrderText, OnNumericOnlyPaste);
+            ConfigureToolbarForMode();
+
             LoadData();
+        }
+
+        private void ConfigureToolbarForMode()
+        {
+            if (!_isCSharpMode)
+            {
+                return;
+            }
+
+            AddMenuPathButton.Visibility = Visibility.Collapsed;
         }
 
         /// <summary>
@@ -182,9 +233,71 @@ namespace 食品信息管理系统.Views.Dialogs
 
         private void AddComponentPathButton_Click(object sender, RoutedEventArgs e)
         {
-            AddOrFocusEntry("component_path", "");
+            var picker = new PageModulePickerWindow(GetAvailablePageModules())
+            {
+                Owner = this
+            };
+
+            if (picker.ShowDialog() != true || picker.SelectedModule == null)
+            {
+                return;
+            }
+
+            SetOrUpdateEntry("csharp_component_path", picker.SelectedModule.ComponentPath);
+            SetOrUpdateEntry("csharp_class", picker.SelectedModule.CSharpClass);
+            RefreshDisplayEntries();
         }
         #endregion
+
+        private void SetOrUpdateEntry(string key, string value)
+        {
+            _fullPayload[key] = value;
+
+            var existing = _displayEntries.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                existing.Value = value;
+                return;
+            }
+
+            if (ShouldDisplayKey(key))
+            {
+                _displayEntries.Add(new PayloadEntry
+                {
+                    Key = key,
+                    Value = value
+                });
+            }
+        }
+
+        private static List<PageModuleOption> GetAvailablePageModules()
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            return assembly.GetTypes()
+                .Where(type => type.IsClass
+                               && !type.IsAbstract
+                               && typeof(Page).IsAssignableFrom(type)
+                               && string.Equals(type.Namespace, "食品信息管理系统.Views.Pages", StringComparison.Ordinal)
+                               && type.Name.EndsWith("Page", StringComparison.Ordinal))
+                .Select(type => new PageModuleOption
+                {
+                    ComponentPath = type.Name,
+                    CSharpClass = type.FullName ?? type.Name,
+                    DisplayName = GetDisplayName(type.Name)
+                })
+                .OrderBy(x => x.ComponentPath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static string GetDisplayName(string typeName)
+        {
+            if (PageDisplayNameMap.TryGetValue(typeName, out var displayName))
+            {
+                return displayName;
+            }
+
+            return typeName;
+        }
 
         #region 底部按钮事件
         private void NewButton_Click(object sender, RoutedEventArgs e)
@@ -211,9 +324,19 @@ namespace 食品信息管理系统.Views.Dialogs
             _node.Code = CodeText.Text.Trim();
             _node.Title = TitleText.Text.Trim();
             _node.ParentCode = string.IsNullOrWhiteSpace(ParentCodeText.Text) ? null : ParentCodeText.Text.Trim();
-            if (int.TryParse(SortOrderText.Text, out var sortOrder))
+            var sortText = SortOrderText.Text.Trim();
+            if (string.IsNullOrWhiteSpace(sortText))
+            {
+                _node.SortOrder = 0;
+            }
+            else if (int.TryParse(sortText, out var sortOrder) && sortOrder >= 0)
             {
                 _node.SortOrder = sortOrder;
+            }
+            else
+            {
+                MessageBox.Show("同级位置必须是大于等于0的整数", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
 
             // 从显示条目重建 Payload，C# 模式下保留未显示的非 C# 键
@@ -276,6 +399,44 @@ namespace 食品信息管理系统.Views.Dialogs
             Close();
         }
         #endregion
+
+        private void NumericOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !IsDigits(e.Text);
+        }
+
+        private void OnNumericOnlyPaste(object sender, DataObjectPastingEventArgs e)
+        {
+            if (!e.DataObject.GetDataPresent(DataFormats.Text))
+            {
+                e.CancelCommand();
+                return;
+            }
+
+            var text = e.DataObject.GetData(DataFormats.Text) as string;
+            if (!IsDigits(text))
+            {
+                e.CancelCommand();
+            }
+        }
+
+        private static bool IsDigits(string? text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            foreach (var ch in text)
+            {
+                if (!char.IsDigit(ch))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         /// <summary>
         /// 从数据库重新加载当前节点

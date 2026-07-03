@@ -74,7 +74,8 @@ namespace FoodEnterpriseIMS.Themes
         // 字体常量
         public static class Fonts
         {
-            public const string DefaultFontFamily = "Microsoft YaHei, Segoe UI, system-ui";
+            // WPF FontFamily 不支持 CSS 风格的 system-ui 字体族写法。
+            public const string DefaultFontFamily = "Microsoft YaHei";
             public const double DefaultFontSize = 11;
             public const double ButtonFontSize = 9;
             public const double TableButtonFontSize = 12;

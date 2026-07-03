@@ -1,0 +1,34 @@
+<Window x:Class="食品信息管理系统.Views.Dialogs.PageModulePickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="选择模块窗体" Height="520" Width="760"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="筛选：" VerticalAlignment="Center"/>
+            <TextBox x:Name="FilterText" Width="240" Margin="8,0,0,0" VerticalContentAlignment="Center" TextChanged="FilterText_TextChanged"/>
+        </StackPanel>
+
+        <DataGrid Grid.Row="2" x:Name="ModuleGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                  SelectionMode="Single" SelectionUnit="FullRow" MouseDoubleClick="ModuleGrid_MouseDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="窗体名称" Binding="{Binding ComponentPath}" Width="180"/>
+                <DataGridTextColumn Header="完整类名" Binding="{Binding CSharpClass}" Width="360"/>
+                <DataGridTextColumn Header="中文名称" Binding="{Binding DisplayName}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="确定" Width="88" Margin="0,0,8,0" Click="OkButton_Click"/>
+            <Button Content="取消" Width="88" Click="CancelButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

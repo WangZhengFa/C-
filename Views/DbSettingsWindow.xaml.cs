@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using FoodEnterpriseIMS.Database;
 using MySqlConnector;
@@ -14,7 +16,54 @@ namespace 食品信息管理系统.Views
         public DbSettingsWindow()
         {
             InitializeComponent();
+            InitNumericCombos();
+            InitGeneralCombos();
+            Loaded += (_, _) =>
+            {
+                AttachNumericPasteHandler(PortEntry);
+                AttachNumericPasteHandler(CountdownEntry);
+            };
             LoadConfig();
+        }
+
+        private void InitGeneralCombos()
+        {
+            HostEntry.Items.Clear();
+            HostEntry.Items.Add("127.0.0.1");
+            HostEntry.Items.Add("localhost");
+            foreach (var host in LocalSettingsService.RecentDbHosts)
+            {
+                if (!HostEntry.Items.Contains(host))
+                {
+                    HostEntry.Items.Add(host);
+                }
+            }
+
+            DatabaseEntry.Items.Clear();
+            DatabaseEntry.Items.Add("spzhprogram");
+            foreach (var dbName in LocalSettingsService.RecentDbNames)
+            {
+                if (!DatabaseEntry.Items.Contains(dbName))
+                {
+                    DatabaseEntry.Items.Add(dbName);
+                }
+            }
+        }
+
+        private void InitNumericCombos()
+        {
+            PortEntry.Items.Clear();
+            PortEntry.Items.Add("3306");
+            PortEntry.Items.Add("3307");
+            PortEntry.Items.Add("13306");
+
+            CountdownEntry.Items.Clear();
+            CountdownEntry.Items.Add("3");
+            CountdownEntry.Items.Add("5");
+            CountdownEntry.Items.Add("10");
+            CountdownEntry.Items.Add("15");
+            CountdownEntry.Items.Add("30");
+            CountdownEntry.Items.Add("60");
         }
 
         private void LoadConfig()
@@ -31,10 +80,11 @@ namespace 食品信息管理系统.Views
 
         private MySqlConfig GetConfigFromUi()
         {
+            var port = ParsePortOrDefault();
             return new MySqlConfig
             {
                 Host = HostEntry.Text?.Trim() ?? "127.0.0.1",
-                Port = int.TryParse(PortEntry.Text, out var port) ? port : 3306,
+                Port = port,
                 User = UserEntry.Text?.Trim() ?? string.Empty,
                 Password = PasswordEntry.Password ?? string.Empty,
                 Database = DatabaseEntry.Text?.Trim() ?? "spzhprogram"
@@ -43,7 +93,14 @@ namespace 食品信息管理系统.Views
 
         private async void OnTestClicked(object sender, RoutedEventArgs e)
         {
+            if (!TryValidatePort(out var port))
+            {
+                ShowMessage("端口必须是 1~65535 的整数", Brushes.Red);
+                return;
+            }
+
             var cfg = GetConfigFromUi();
+            cfg.Port = port;
             var connString = MysqlDbInitializer.GetConnStringWithoutDb(cfg);
 
             try
@@ -60,10 +117,24 @@ namespace 食品信息管理系统.Views
 
         private void OnSaveClicked(object sender, RoutedEventArgs e)
         {
-            var cfg = GetConfigFromUi();
-            DbConfigService.SaveConfig(cfg);
+            if (!TryValidatePort(out var port))
+            {
+                ShowMessage("端口必须是 1~65535 的整数", Brushes.Red);
+                return;
+            }
 
-            int countdown = int.TryParse(CountdownEntry.Text, out var cd) ? Math.Clamp(cd, 1, 60) : 3;
+            if (!TryValidateCountdown(out var countdown))
+            {
+                ShowMessage("自动登录倒计时必须是 1~60 的整数", Brushes.Red);
+                return;
+            }
+
+            var cfg = GetConfigFromUi();
+            cfg.Port = port;
+            DbConfigService.SaveConfig(cfg);
+            LocalSettingsService.AddDbHostHistory(cfg.Host);
+            LocalSettingsService.AddDbNameHistory(cfg.Database);
+
             LocalSettingsService.AutoLoginCountdown = countdown;
             LocalSettingsService.AutoUpdateEnabled = AutoUpdateCheck.IsChecked == true;
 
@@ -85,6 +156,78 @@ namespace 食品信息管理系统.Views
             MessageLabel.Text = message;
             MessageLabel.Foreground = brush;
             MessageLabel.Visibility = Visibility.Visible;
+        }
+
+        private void NumericOnly_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !IsDigits(e.Text);
+        }
+
+        private static bool IsDigits(string? text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            foreach (var ch in text)
+            {
+                if (!char.IsDigit(ch))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryValidatePort(out int port)
+        {
+            if (!int.TryParse(PortEntry.Text?.Trim(), out port))
+            {
+                return false;
+            }
+
+            return port >= 1 && port <= 65535;
+        }
+
+        private int ParsePortOrDefault()
+        {
+            return TryValidatePort(out var port) ? port : 3306;
+        }
+
+        private bool TryValidateCountdown(out int countdown)
+        {
+            if (!int.TryParse(CountdownEntry.Text?.Trim(), out countdown))
+            {
+                return false;
+            }
+
+            return countdown >= 1 && countdown <= 60;
+        }
+
+        private static void AttachNumericPasteHandler(ComboBox combo)
+        {
+            combo.ApplyTemplate();
+            if (combo.Template.FindName("PART_EditableTextBox", combo) is TextBox textBox)
+            {
+                DataObject.AddPastingHandler(textBox, OnNumericOnlyPaste);
+            }
+        }
+
+        private static void OnNumericOnlyPaste(object sender, DataObjectPastingEventArgs e)
+        {
+            if (!e.DataObject.GetDataPresent(DataFormats.Text))
+            {
+                e.CancelCommand();
+                return;
+            }
+
+            var text = e.DataObject.GetData(DataFormats.Text) as string;
+            if (!IsDigits(text))
+            {
+                e.CancelCommand();
+            }
         }
     }
 }

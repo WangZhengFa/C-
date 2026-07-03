@@ -51,13 +51,14 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="账号：" FontSize="13" Foreground="#333333" VerticalAlignment="Center"/>
                         <Border Grid.Column="1" BorderBrush="#777777" BorderThickness="1" Background="White">
-                            <TextBox x:Name="UsernameEntry"
-                                     FontSize="13"
-                                     BorderThickness="0"
-                                     Background="Transparent"
-                                     Padding="6,2"
-                                     VerticalContentAlignment="Center"
-                                     TextChanged="OnUsernameChanged"/>
+                            <ComboBox x:Name="UsernameEntry"
+                                      FontSize="13"
+                                      BorderThickness="0"
+                                      Background="Transparent"
+                                      Padding="2,0"
+                                      IsEditable="True"
+                                      IsTextSearchEnabled="True"
+                                      VerticalContentAlignment="Center"/>
                         </Border>
                     </Grid>
 

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Windows;
+using FoodEnterpriseIMS.Database;
 using 食品信息管理系统.Views;
 
 namespace FoodEnterpriseIMS
@@ -24,6 +25,9 @@ namespace FoodEnterpriseIMS
             
             try
             {
+                MysqlDbInitializer.InitDbOnce();
+                WriteLog("数据库初始化完成");
+
                 var login = new LoginWindow();
                 login.Show();
                 WriteLog("登录窗口已显示");

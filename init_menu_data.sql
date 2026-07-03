@@ -61,7 +61,8 @@ INSERT INTO tree_nodes (tree_key, node_code, parent_code, title, sort_order, pay
 ('system_menu', 'standard_regulations', 'basic_data', '标规法规', 6, '{"component_path": "StandardRegulationsPage"}'),
 ('system_menu', 'general_dictionary', 'basic_data', '通用字典', 7, '{"component_path": "GeneralDictionaryPage"}'),
 ('system_menu', 'customer_info', 'basic_data', '客户信息', 8, '{"component_path": "CustomerInfoPage"}'),
-('system_menu', 'process_params', 'basic_data', '工序参数', 9, '{"component_path": "ProcessParamsPage"}');
+('system_menu', 'process_params', 'basic_data', '工序参数', 9, '{"component_path": "ProcessParamsPage"}'),
+('system_menu', 'food_categories', 'basic_data', '食品分类', 10, '{"component_path": "FoodCategoriesPage"}');
 
 -- 常用工具的子节点
 INSERT INTO tree_nodes (tree_key, node_code, parent_code, title, sort_order, payload_json) VALUES

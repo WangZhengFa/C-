@@ -22,7 +22,7 @@
         <Style TargetType="Control">
             <Setter Property="Background" Value="{StaticResource DarkBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource DarkForeground}"/>
-            <Setter Property="FontFamily" Value="{x:Static local:ThemeConstants+Fonts.DefaultFontFamily}"/>
+            <Setter Property="FontFamily" Value="{x:Static SystemFonts.MessageFontFamily}"/>
             <Setter Property="FontSize" Value="{x:Static local:ThemeConstants+Fonts.DefaultFontSize}"/>
         </Style>
 
@@ -278,7 +278,7 @@
         <Style TargetType="Control">
             <Setter Property="Background" Value="{StaticResource LightBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource LightForeground}"/>
-            <Setter Property="FontFamily" Value="{x:Static local:ThemeConstants+Fonts.DefaultFontFamily}"/>
+            <Setter Property="FontFamily" Value="{x:Static SystemFonts.MessageFontFamily}"/>
             <Setter Property="FontSize" Value="{x:Static local:ThemeConstants+Fonts.DefaultFontSize}"/>
         </Style>
 

@@ -13,6 +13,8 @@ namespace FoodEnterpriseIMS.Database
     /// </summary>
     public static class MysqlDbInitializer
     {
+      private const int InitSqlCommandTimeoutSeconds = 8;
+
         #region 配置读取逻辑
         private const string DefaultDbName = "spzhprogram";
 
@@ -57,7 +59,24 @@ namespace FoodEnterpriseIMS.Database
                 var config = new ConfigurationBuilder()
                     .AddIniFile(cfgPath, optional: true, reloadOnChange: true)
                     .Build();
-                var section = config.GetSection("Settings");
+
+              // 兼容 Python 启动器格式：[MySQL] host/port/database/user/password
+              var mysqlSection = config.GetSection("MySQL");
+              var mysqlHost = mysqlSection["host"];
+              if (!string.IsNullOrWhiteSpace(mysqlHost))
+              {
+                return new MySqlConfig
+                {
+                  Host = mysqlHost,
+                  Port = int.TryParse(mysqlSection["port"], out var mysqlPort) ? mysqlPort : 3306,
+                  User = mysqlSection["user"] ?? "spzh_user",
+                  Password = mysqlSection["password"] ?? "10241024",
+                  Database = mysqlSection["database"] ?? DefaultDbName
+                };
+              }
+
+              // 兼容旧 C# 配置格式：[Settings] mysql_host/mysql_port/mysql_user/mysql_password/db_name
+              var section = config.GetSection("Settings");
                 return new MySqlConfig
                 {
                     Host = section["mysql_host"] ?? "10.57.129.50",
@@ -100,7 +119,336 @@ namespace FoodEnterpriseIMS.Database
         private static void ExecuteSql(MySqlConnection conn, string sql)
         {
             using var cmd = new MySqlCommand(sql, conn);
+          cmd.CommandTimeout = InitSqlCommandTimeoutSeconds;
             cmd.ExecuteNonQuery();
+        }
+
+        private static string ToLegacyCompatibleIndexSql(string sql)
+        {
+          if (string.IsNullOrWhiteSpace(sql))
+          {
+            return sql;
+          }
+
+          return sql.Replace("CREATE INDEX IF NOT EXISTS", "CREATE INDEX", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryParseCreateIndexSql(string sql, out string indexName, out string tableName)
+        {
+          indexName = string.Empty;
+          tableName = string.Empty;
+          if (string.IsNullOrWhiteSpace(sql))
+          {
+            return false;
+          }
+
+          var normalized = sql.Trim().TrimEnd(';');
+          var marker = "CREATE INDEX ";
+          if (!normalized.StartsWith(marker, StringComparison.OrdinalIgnoreCase))
+          {
+            return false;
+          }
+
+          var onPos = normalized.IndexOf(" ON ", StringComparison.OrdinalIgnoreCase);
+          if (onPos <= marker.Length)
+          {
+            return false;
+          }
+
+          var left = normalized.Substring(marker.Length, onPos - marker.Length).Trim().Trim('`');
+          var right = normalized[(onPos + 4)..].Trim();
+          var parenPos = right.IndexOf('(');
+          if (parenPos <= 0)
+          {
+            return false;
+          }
+
+          var table = right.Substring(0, parenPos).Trim().Trim('`');
+          if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(table))
+          {
+            return false;
+          }
+
+          indexName = left;
+          tableName = table;
+          return true;
+        }
+
+        private static bool IndexExists(MySqlConnection conn, string tableName, string indexName)
+        {
+          const string sql = @"
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = @tableName
+      AND index_name = @indexName
+    LIMIT 1;";
+
+          using var cmd = new MySqlCommand(sql, conn);
+          cmd.Parameters.AddWithValue("@tableName", tableName);
+          cmd.Parameters.AddWithValue("@indexName", indexName);
+          var result = cmd.ExecuteScalar();
+          return result != null && result != DBNull.Value;
+        }
+
+        private static bool IsPermissionKeyTextColumn(MySqlConnection conn)
+        {
+          const string sql = @"
+    SELECT data_type
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'permissions'
+      AND column_name = 'permission_key'
+    LIMIT 1;";
+
+          using var cmd = new MySqlCommand(sql, conn);
+          var result = cmd.ExecuteScalar()?.ToString();
+          if (string.IsNullOrWhiteSpace(result))
+          {
+            return false;
+          }
+
+          return result.Equals("text", StringComparison.OrdinalIgnoreCase)
+               || result.Equals("mediumtext", StringComparison.OrdinalIgnoreCase)
+               || result.Equals("longtext", StringComparison.OrdinalIgnoreCase)
+               || result.Equals("tinytext", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ExecuteIndexSql(MySqlConnection conn, string sql)
+        {
+          var compatibleSql = ToLegacyCompatibleIndexSql(sql);
+
+          if (TryParseCreateIndexSql(compatibleSql, out var indexName, out var tableName) && IndexExists(conn, tableName, indexName))
+          {
+            return;
+          }
+
+          if (indexName.Equals("idx_permissions_key", StringComparison.OrdinalIgnoreCase)
+            && tableName.Equals("permissions", StringComparison.OrdinalIgnoreCase)
+            && IsPermissionKeyTextColumn(conn))
+          {
+            try
+            {
+              ExecuteSql(conn, "CREATE INDEX idx_permissions_key ON permissions(permission_key(191));");
+            }
+            catch (MySqlException fallbackEx) when (fallbackEx.Number == 1061)
+            {
+              // 前缀索引已存在
+            }
+            return;
+          }
+
+          try
+          {
+            ExecuteSql(conn, compatibleSql);
+          }
+          catch (MySqlException ex) when (ex.Number == 1061)
+          {
+            // 索引已存在（Duplicate key name），保持初始化幂等。
+          }
+          catch (MySqlException ex) when (ex.Number == 1170 && compatibleSql.Contains("permissions(permission_key)", StringComparison.OrdinalIgnoreCase))
+          {
+            // 兼容历史库把 permission_key 建成 TEXT 的场景：使用前缀索引长度回退。
+            try
+            {
+              ExecuteSql(conn, "CREATE INDEX idx_permissions_key ON permissions(permission_key(191));");
+            }
+            catch (MySqlException fallbackEx) when (fallbackEx.Number == 1061)
+            {
+              // 前缀索引已存在
+            }
+          }
+          catch (MySqlException ex) when (ex.Number == 1170)
+          {
+            // 旧库字段可能是 TEXT 且当前索引语句未带前缀长度，跳过该索引避免阻塞启动。
+            Console.WriteLine($"[InitDbOnce] 索引创建因TEXT前缀限制被跳过: {compatibleSql}");
+          }
+          catch (MySqlException ex) when (IsCommandTimeout(ex))
+          {
+            // 旧库或大表场景下建索引耗时过长，跳过当前索引避免阻塞启动。
+            Console.WriteLine($"[InitDbOnce] 索引创建超时，已跳过: {compatibleSql}");
+          }
+          catch (TimeoutException)
+          {
+            Console.WriteLine($"[InitDbOnce] 索引创建超时，已跳过: {compatibleSql}");
+          }
+        }
+
+        private static bool IsCommandTimeout(MySqlException ex)
+        {
+          if (ex == null)
+          {
+            return false;
+          }
+
+          if (ex.InnerException is TimeoutException)
+          {
+            return true;
+          }
+
+          return ex.Message.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0
+               || ex.Message.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void EnsureDefaultRoles(MySqlConnection conn)
+        {
+            ExecuteSql(conn, "INSERT IGNORE INTO roles(id,name,description,is_enabled) VALUES (1,'管理员','系统管理员',1);");
+            ExecuteSql(conn, "INSERT IGNORE INTO roles(id,name,description,is_enabled) VALUES (2,'普通用户','普通用户',1);");
+            ExecuteSql(conn, "INSERT IGNORE INTO roles(id,name,description,is_enabled) VALUES (3,'访客','仅查看',1);");
+        }
+
+        private static void EnsureDefaultMenuButtons(MySqlConnection conn)
+        {
+          // sample_record 默认按钮
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','新增','add','add_btn','新增记录',1,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='add_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','编辑','edit','edit_btn','编辑记录',2,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='edit_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','删除','delete','delete_btn','删除记录',3,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='delete_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','导入','import','import_btn','导入数据',4,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='import_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','导出','export','export_btn','导出数据',5,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='export_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','设置','settings','settings_btn','设置',6,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='settings_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'sample_record','关闭','close','close_btn','关闭页面',7,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='sample_record' AND button_key='close_btn');");
+
+          // quality_supervision 默认按钮
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','新增','add','add_btn','新增记录',1,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='add_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','编辑','edit','edit_btn','编辑记录',2,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='edit_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','删除','delete','delete_btn','删除记录',3,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='delete_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','导入','import','import_btn','导入数据',4,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='import_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','导出','export','export_btn','导出数据',5,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='export_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','设置','settings','settings_btn','设置',6,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='settings_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'quality_supervision','关闭','close','close_btn','关闭页面',7,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='quality_supervision' AND button_key='close_btn');");
+
+          // user_management 默认按钮
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'user_management','刷新','refresh','refresh_btn','刷新数据',1,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='user_management' AND button_key='refresh_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'user_management','新增','add','add_btn','新增记录',2,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='user_management' AND button_key='add_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'user_management','编辑','edit','edit_btn','编辑记录',3,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='user_management' AND button_key='edit_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'user_management','删除','delete','delete_btn','删除记录',4,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='user_management' AND button_key='delete_btn');");
+          ExecuteSql(conn, @"
+    INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+    SELECT 'user_management','保存','save','save_btn','保存分配',5,1 FROM DUAL
+    WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='user_management' AND button_key='save_btn');");
+        }
+
+        private static void SyncPermissionsFromMenuTree(MySqlConnection conn)
+        {
+            // 同步菜单权限
+            ExecuteSql(conn, @"
+INSERT INTO permissions(permission_key,name,node_type,description,node_code)
+SELECT tn.node_code, tn.title, 'menu', tn.title, tn.node_code
+FROM tree_nodes tn
+WHERE tn.tree_key='system_menu' AND COALESCE(tn.node_code,'')<>''
+ON DUPLICATE KEY UPDATE
+  name=VALUES(name),
+  node_type='menu',
+  description=VALUES(description),
+  node_code=VALUES(node_code);");
+
+            // 同步按钮权限
+            ExecuteSql(conn, @"
+INSERT INTO permissions(permission_key,name,node_type,description,node_code)
+SELECT CONCAT(mb.node_code,':',mb.button_key),
+       COALESCE(NULLIF(mb.button_name_cn,''), mb.button_key),
+       'button',
+       mb.description,
+       mb.node_code
+FROM menu_buttons mb
+WHERE mb.enabled=1
+  AND COALESCE(mb.node_code,'')<>''
+  AND COALESCE(mb.button_key,'')<>''
+ON DUPLICATE KEY UPDATE
+  name=VALUES(name),
+  node_type='button',
+  description=VALUES(description),
+  node_code=VALUES(node_code);");
+
+            // 清理已失效的菜单权限（菜单节点不存在）
+            ExecuteSql(conn, @"
+DELETE p
+FROM permissions p
+LEFT JOIN tree_nodes tn
+  ON tn.tree_key='system_menu'
+ AND tn.node_code=p.permission_key
+WHERE p.node_type='menu'
+  AND tn.node_code IS NULL;");
+
+            // 清理已失效的按钮权限（按钮定义不存在或已禁用）
+            ExecuteSql(conn, @"
+DELETE p
+FROM permissions p
+LEFT JOIN menu_buttons mb
+  ON p.node_type='button'
+ AND p.node_code=mb.node_code
+ AND p.permission_key=CONCAT(mb.node_code,':',mb.button_key)
+ AND mb.enabled=1
+WHERE p.node_type='button'
+  AND mb.id IS NULL;");
+
+            // 防御性清理：移除异常孤儿授权（兼容历史无外键场景）
+            ExecuteSql(conn, @"
+DELETE rp
+FROM role_permissions rp
+LEFT JOIN permissions p ON p.id=rp.permission_id
+WHERE p.id IS NULL;");
+
+            // 给管理员角色授予全部菜单/按钮权限
+            ExecuteSql(conn, @"
+INSERT IGNORE INTO role_permissions(role_id, permission_id)
+SELECT 1, p.id
+FROM permissions p
+WHERE p.node_type IN ('menu','button');");
         }
 
         /// <summary>
@@ -108,10 +456,22 @@ namespace FoodEnterpriseIMS.Database
         /// </summary>
         private static void CreateDatabaseIfNotExists(MySqlConfig cfg)
         {
+          try
+          {
             using var conn = new MySqlConnection(GetConnStringWithoutDb(cfg));
             conn.Open();
             var createDbSql = $"CREATE DATABASE IF NOT EXISTS `{cfg.Database}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
             ExecuteSql(conn, createDbSql);
+          }
+          catch (MySqlException ex) when (IsCommandTimeout(ex))
+          {
+            // 远端数据库偶发慢响应时，若目标库已存在可继续后续初始化。
+            Console.WriteLine($"[InitDbOnce] 创建数据库超时，继续尝试连接现有库: {cfg.Database}");
+          }
+          catch (TimeoutException)
+          {
+            Console.WriteLine($"[InitDbOnce] 创建数据库超时，继续尝试连接现有库: {cfg.Database}");
+          }
         }
         #endregion
 
@@ -147,7 +507,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
             ["permissions"] = @"
 CREATE TABLE IF NOT EXISTS `permissions` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-  `permission_key` VARCHAR(200) NOT NULL,
+  `permission_key` VARCHAR(191) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `node_type` VARCHAR(20) NOT NULL,
   `description` TEXT,
@@ -227,7 +587,19 @@ CREATE TABLE IF NOT EXISTS `login_stats` (
   `login_time` DATETIME NOT NULL,
   `ip_address` VARCHAR(50),
   `user_agent` TEXT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录统计'"
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录统计'",
+            ["login_audit_logs"] = @"
+CREATE TABLE IF NOT EXISTS `login_audit_logs` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `user_id` BIGINT NULL,
+  `username` VARCHAR(100) NOT NULL,
+  `is_success` TINYINT(1) NOT NULL DEFAULT 0,
+  `reason` VARCHAR(255),
+  `client_machine` VARCHAR(100),
+  `login_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_login_audit_user_time` (`user_id`, `login_time`),
+  INDEX `idx_login_audit_username_time` (`username`, `login_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录审计日志'"
         };
 
         // 2.2 基础主数据表
@@ -357,7 +729,7 @@ CREATE TABLE IF NOT EXISTS `employee_infos` (
   `education` VARCHAR(50) NOT NULL DEFAULT '',
   `email` VARCHAR(100) NOT NULL DEFAULT '',
   `status` VARCHAR(20) NOT NULL DEFAULT '在职',
-  `remark` TEXT NOT NULL DEFAULT '',
+  `remark` TEXT,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_employee_id` (`employee_id`)
@@ -529,9 +901,9 @@ CREATE TABLE IF NOT EXISTS `nutrition_labels` (
   `name` VARCHAR(200) NOT NULL,
   `detection_mode` VARCHAR(50) DEFAULT 'core',
   `heavy_metal` TINYINT(1) DEFAULT 0,
-  `claim_types` TEXT DEFAULT '[]',
+  `claim_types` TEXT,
   `remark` TEXT,
-  `nutrient_data` TEXT DEFAULT '{}',
+  `nutrient_data` TEXT,
   `created_at` DATETIME,
   `updated_at` DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='营养标签配置'",
@@ -961,6 +1333,8 @@ CREATE TABLE IF NOT EXISTS `exam_detail` (
             "CREATE INDEX IF NOT EXISTS idx_role_permissions_perm ON role_permissions(permission_id);",
             "CREATE INDEX IF NOT EXISTS idx_user_accounts_username ON user_accounts(username);",
             "CREATE INDEX IF NOT EXISTS idx_user_accounts_role_id ON user_accounts(role_id);",
+            "CREATE INDEX IF NOT EXISTS idx_login_audit_username_time ON login_audit_logs(username, login_time);",
+            "CREATE INDEX IF NOT EXISTS idx_login_audit_user_time ON login_audit_logs(user_id, login_time);",
 
             // 基础数据索引
             "CREATE INDEX IF NOT EXISTS idx_tree_nodes_parent ON tree_nodes(tree_key, parent_code, sort_order);",
@@ -1101,8 +1475,13 @@ CREATE TABLE IF NOT EXISTS `exam_detail` (
             // 批量创建所有索引
             foreach (var idxSql in AllIndexSqls)
             {
-                ExecuteSql(conn, idxSql);
+              ExecuteIndexSql(conn, idxSql);
             }
+
+            // 对齐 Python 端初始化行为：默认角色 + 菜单/按钮权限增量同步
+            EnsureDefaultRoles(conn);
+            EnsureDefaultMenuButtons(conn);
+            SyncPermissionsFromMenuTree(conn);
 
             Console.WriteLine("数据库初始化完成：库、全部数据表、优化索引已创建完毕");
         }

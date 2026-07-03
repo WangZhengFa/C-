@@ -25,6 +25,14 @@ namespace 食品信息管理系统.Services
         public static void SaveConfig(MySqlConfig config)
         {
             var sb = new StringBuilder();
+            sb.AppendLine("[MySQL]");
+            sb.AppendLine($"host = {config.Host}");
+            sb.AppendLine($"port = {config.Port}");
+            sb.AppendLine($"database = {config.Database}");
+            sb.AppendLine($"user = {config.User}");
+            sb.AppendLine($"password = {config.Password}");
+            sb.AppendLine();
+
             sb.AppendLine("[Settings]");
             sb.AppendLine($"mysql_host = {config.Host}");
             sb.AppendLine($"mysql_port = {config.Port}");

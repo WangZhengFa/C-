@@ -255,8 +255,8 @@ VALUES
                 Id = reader.GetInt64("id"),
                 SamplingId = reader.GetString("sampling_id"),
                 NodeCode = reader.GetString("node_code"),
-                SamplingDate = reader.GetDateTime("sampling_date"),
-                InspectionDate = reader.GetDateTime("inspection_date"),
+                SamplingDate = GetSafeDateTime(reader, "sampling_date", DateTime.Today),
+                InspectionDate = GetSafeDateTime(reader, "inspection_date", DateTime.Today),
                 SampleName = reader.GetString("sample_name"),
                 SampleBatch = reader.GetString("sample_batch"),
                 SamplingQuantity = reader.IsDBNull(reader.GetOrdinal("sampling_quantity")) ? string.Empty : reader.GetString("sampling_quantity"),
@@ -267,6 +267,51 @@ VALUES
                 Remark = reader.IsDBNull(reader.GetOrdinal("remark")) ? string.Empty : reader.GetString("remark"),
                 IsDeleted = reader.GetBoolean("is_deleted")
             };
+        }
+
+        private static DateTime GetSafeDateTime(MySqlDataReader reader, string columnName, DateTime fallback)
+        {
+            var ordinal = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ordinal))
+            {
+                return fallback;
+            }
+
+            var value = reader.GetValue(ordinal);
+            if (value is DateTime dateTime)
+            {
+                return dateTime;
+            }
+
+            var text = Convert.ToString(value)?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return fallback;
+            }
+
+            if (DateTime.TryParse(text, out var parsed))
+            {
+                return parsed;
+            }
+
+            if (DateTime.TryParseExact(
+                text,
+                new[]
+                {
+                    "yyyy-MM-dd",
+                    "yyyy-MM-dd HH:mm:ss",
+                    "yyyy/MM/dd",
+                    "yyyy/MM/dd HH:mm:ss",
+                    "yyyyMMdd"
+                },
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out parsed))
+            {
+                return parsed;
+            }
+
+            return fallback;
         }
 
         private static void AddParameters(MySqlCommand cmd, SamplingRecord record)
