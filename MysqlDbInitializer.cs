@@ -1,5 +1,6 @@
 ﻿﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using MySqlConnector;
@@ -13,7 +14,10 @@ namespace FoodEnterpriseIMS.Database
     /// </summary>
     public static class MysqlDbInitializer
     {
-      private const int InitSqlCommandTimeoutSeconds = 8;
+      // 初始化阶段包含建表/建索引，8秒在网络抖动或元数据锁场景下容易误超时。
+      private const int InitSqlCommandTimeoutSeconds = 60;
+      private const int InitLockWaitTimeoutSeconds = 15;
+      private const int InitSqlSlowLogThresholdMs = 1500;
 
         #region 配置读取逻辑
         private const string DefaultDbName = "spzhprogram";
@@ -116,11 +120,120 @@ namespace FoodEnterpriseIMS.Database
         #endregion
 
         #region 底层SQL执行封装
+        private static void EnsureConnectionOpen(MySqlConnection conn)
+        {
+          if (conn.State == System.Data.ConnectionState.Open)
+          {
+            return;
+          }
+
+          try
+          {
+            conn.Close();
+          }
+          catch
+          {
+            // ignore
+          }
+
+          conn.Open();
+        }
+
         private static void ExecuteSql(MySqlConnection conn, string sql)
         {
-            using var cmd = new MySqlCommand(sql, conn);
-          cmd.CommandTimeout = InitSqlCommandTimeoutSeconds;
+          ExecuteSql(conn, sql, retryOnTimeout: true);
+        }
+
+        private static string GetSqlPreview(string sql, int maxLength = 120)
+        {
+          if (string.IsNullOrWhiteSpace(sql))
+          {
+            return "<empty-sql>";
+          }
+
+          var compact = sql.Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+
+          while (compact.Contains("  ", StringComparison.Ordinal))
+          {
+            compact = compact.Replace("  ", " ", StringComparison.Ordinal);
+          }
+
+          if (compact.Length <= maxLength)
+          {
+            return compact;
+          }
+
+          return compact[..maxLength] + "...";
+        }
+
+        private static void ConfigureInitSession(MySqlConnection conn)
+        {
+          try
+          {
+            using var cmd1 = new MySqlCommand($"SET SESSION lock_wait_timeout = {InitLockWaitTimeoutSeconds};", conn);
+            cmd1.CommandTimeout = 5;
+            cmd1.ExecuteNonQuery();
+
+            using var cmd2 = new MySqlCommand($"SET SESSION innodb_lock_wait_timeout = {InitLockWaitTimeoutSeconds};", conn);
+            cmd2.CommandTimeout = 5;
+            cmd2.ExecuteNonQuery();
+          }
+          catch (Exception ex)
+          {
+            Console.WriteLine($"[InitDbOnce] 设置会话锁等待超时失败，继续使用服务端默认值: {ex.Message}");
+          }
+        }
+
+        private static void ExecuteSqlWithTimeout(MySqlConnection conn, string sql, int timeoutSeconds)
+        {
+          EnsureConnectionOpen(conn);
+          using var cmd = new MySqlCommand(sql, conn);
+          cmd.CommandTimeout = timeoutSeconds;
+          var sqlPreview = GetSqlPreview(sql);
+          var sw = Stopwatch.StartNew();
+          try
+          {
             cmd.ExecuteNonQuery();
+          }
+          catch (Exception ex)
+          {
+            Console.WriteLine($"[InitDbOnce] SQL执行失败({sw.ElapsedMilliseconds}ms): {sqlPreview}; error={ex.Message}");
+            throw;
+          }
+          finally
+          {
+            sw.Stop();
+            if (sw.ElapsedMilliseconds >= InitSqlSlowLogThresholdMs)
+            {
+              Console.WriteLine($"[InitDbOnce] SQL耗时 {sw.ElapsedMilliseconds}ms: {sqlPreview}");
+            }
+          }
+        }
+
+        private static bool IsTimeoutException(Exception ex)
+        {
+          if (ex is TimeoutException)
+          {
+            return true;
+          }
+
+          return ex.Message?.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void ExecuteSql(MySqlConnection conn, string sql, bool retryOnTimeout)
+        {
+          try
+          {
+            ExecuteSqlWithTimeout(conn, sql, InitSqlCommandTimeoutSeconds);
+          }
+          catch (Exception ex) when (retryOnTimeout && IsTimeoutException(ex))
+          {
+            EnsureConnectionOpen(conn);
+            // 重试时提高超时阈值，避免因瞬时抖动导致启动失败。
+            ExecuteSqlWithTimeout(conn, sql, InitSqlCommandTimeoutSeconds * 2);
+          }
         }
 
         private static string ToLegacyCompatibleIndexSql(string sql)
@@ -187,6 +300,22 @@ namespace FoodEnterpriseIMS.Database
           using var cmd = new MySqlCommand(sql, conn);
           cmd.Parameters.AddWithValue("@tableName", tableName);
           cmd.Parameters.AddWithValue("@indexName", indexName);
+          var result = cmd.ExecuteScalar();
+          return result != null && result != DBNull.Value;
+        }
+
+        private static bool TableExists(MySqlConnection conn, string tableName)
+        {
+          const string sql = @"
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = DATABASE()
+      AND table_name = @tableName
+    LIMIT 1;";
+
+          using var cmd = new MySqlCommand(sql, conn);
+          cmd.CommandTimeout = 5;
+          cmd.Parameters.AddWithValue("@tableName", tableName);
           var result = cmd.ExecuteScalar();
           return result != null && result != DBNull.Value;
         }
@@ -380,6 +509,28 @@ namespace FoodEnterpriseIMS.Database
     INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
     SELECT 'user_management','保存','save','save_btn','保存分配',5,1 FROM DUAL
     WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='user_management' AND button_key='save_btn');");
+
+              // role_permissions 默认按钮
+              ExecuteSql(conn, @"
+            INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+            SELECT 'role_permissions','刷新','refresh','refresh_btn','刷新数据',1,1 FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='role_permissions' AND button_key='refresh_btn');");
+              ExecuteSql(conn, @"
+            INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+            SELECT 'role_permissions','新增','add','add_btn','新增角色',2,1 FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='role_permissions' AND button_key='add_btn');");
+              ExecuteSql(conn, @"
+            INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+            SELECT 'role_permissions','编辑','edit','edit_btn','编辑角色',3,1 FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='role_permissions' AND button_key='edit_btn');");
+              ExecuteSql(conn, @"
+            INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+            SELECT 'role_permissions','删除','delete','delete_btn','删除角色',4,1 FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='role_permissions' AND button_key='delete_btn');");
+              ExecuteSql(conn, @"
+            INSERT INTO menu_buttons(node_code,button_name_cn,button_name_en,button_key,description,sort_order,enabled)
+            SELECT 'role_permissions','保存','save','save_btn','保存权限分配',5,1 FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM menu_buttons WHERE node_code='role_permissions' AND button_key='save_btn');");
         }
 
         private static void SyncPermissionsFromMenuTree(MySqlConnection conn)
@@ -454,6 +605,21 @@ WHERE p.node_type IN ('menu','button');");
         /// <summary>
         /// 数据库不存在则自动创建
         /// </summary>
+        private static bool DatabaseExists(MySqlConnection conn, string databaseName)
+        {
+          const string sql = @"
+SELECT 1
+FROM information_schema.schemata
+WHERE schema_name = @db
+LIMIT 1;";
+
+          using var cmd = new MySqlCommand(sql, conn);
+          cmd.CommandTimeout = 5;
+          cmd.Parameters.AddWithValue("@db", databaseName);
+          var result = cmd.ExecuteScalar();
+          return result != null && result != DBNull.Value;
+        }
+
         private static void CreateDatabaseIfNotExists(MySqlConfig cfg)
         {
           try
@@ -463,14 +629,25 @@ WHERE p.node_type IN ('menu','button');");
             var createDbSql = $"CREATE DATABASE IF NOT EXISTS `{cfg.Database}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
             ExecuteSql(conn, createDbSql);
           }
-          catch (MySqlException ex) when (IsCommandTimeout(ex))
+          catch (Exception ex)
           {
-            // 远端数据库偶发慢响应时，若目标库已存在可继续后续初始化。
-            Console.WriteLine($"[InitDbOnce] 创建数据库超时，继续尝试连接现有库: {cfg.Database}");
-          }
-          catch (TimeoutException)
-          {
-            Console.WriteLine($"[InitDbOnce] 创建数据库超时，继续尝试连接现有库: {cfg.Database}");
+            // 连接抖动/会话Broken时，若目标库已存在则允许继续启动。
+            try
+            {
+              using var verifyConn = new MySqlConnection(GetConnStringWithoutDb(cfg));
+              verifyConn.Open();
+              if (DatabaseExists(verifyConn, cfg.Database))
+              {
+                Console.WriteLine($"[InitDbOnce] 建库步骤异常但数据库已存在，继续启动: {cfg.Database}; error={ex.Message}");
+                return;
+              }
+            }
+            catch
+            {
+              // ignore
+            }
+
+            throw;
           }
         }
         #endregion
@@ -924,8 +1101,6 @@ CREATE TABLE IF NOT EXISTS `nutrient_parameters` (
   `is_sports_nutrition` TINYINT(1) DEFAULT 0,
   `daily_usage_range` TEXT,
   `disabled` TINYINT(1) DEFAULT 0,
-  `param_key` VARCHAR(100),
-  `param_value` TEXT,
   `description` TEXT,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='营养参数'",
@@ -1452,30 +1627,73 @@ CREATE TABLE IF NOT EXISTS `exam_detail` (
         public static void InitDbOnce()
         {
             var cfg = LoadMysqlConfig();
+          Console.WriteLine($"[InitDbOnce] 开始初始化数据库: host={cfg.Host}, port={cfg.Port}, db={cfg.Database}");
             CreateDatabaseIfNotExists(cfg);
             var connStr = GetConnString(cfg);
 
             using var conn = new MySqlConnection(connStr);
             conn.Open();
+          ConfigureInitSession(conn);
 
             // 按依赖顺序建表：系统 → 基础 → 配置 → 业务
-            void CreateTableBatch(Dictionary<string, string> tables)
+            // 仅 system 批次必须成功；其余批次在超时时跳过并继续启动。
+            void CreateTableBatch(string batchName, Dictionary<string, string> tables, bool strict)
             {
-                foreach (var sql in tables.Values)
+              Console.WriteLine($"[InitDbOnce] 开始建表批次: batch={batchName}, total={tables.Count}");
+              foreach (var pair in tables)
                 {
-                    ExecuteSql(conn, sql);
+                if (TableExists(conn, pair.Key))
+                {
+                  continue;
                 }
+
+                try
+                {
+                  ExecuteSql(conn, pair.Value);
+                }
+                catch (Exception ex) when (IsTimeoutException(ex))
+                {
+                  // 并发启动时可能出现 DDL 等待；若超时后目标表已存在则视为其他实例已完成。
+                  if (TableExists(conn, pair.Key))
+                  {
+                    continue;
+                  }
+
+                  if (!strict)
+                  {
+                    Console.WriteLine($"[InitDbOnce] 建表超时已跳过: batch={batchName}, table={pair.Key}");
+                    continue;
+                  }
+
+                  throw new TimeoutException($"初始化超时: batch={batchName}, table={pair.Key}", ex);
+                }
+                catch (Exception ex)
+                {
+                  if (!strict)
+                  {
+                    Console.WriteLine($"[InitDbOnce] 建表失败已跳过: batch={batchName}, table={pair.Key}, error={ex.Message}");
+                    continue;
+                  }
+
+                  throw new InvalidOperationException($"初始化失败: batch={batchName}, table={pair.Key}", ex);
+                }
+                }
+              Console.WriteLine($"[InitDbOnce] 建表批次完成: batch={batchName}");
             }
 
-            CreateTableBatch(SystemTables);
-            CreateTableBatch(MasterTables);
-            CreateTableBatch(ConfigTables);
-            CreateTableBatch(TransactionTables);
+            CreateTableBatch("system", SystemTables, strict: true);
+            CreateTableBatch("master", MasterTables, strict: false);
+            CreateTableBatch("config", ConfigTables, strict: false);
+            CreateTableBatch("transaction", TransactionTables, strict: false);
 
             // 批量创建所有索引
-            foreach (var idxSql in AllIndexSqls)
+            for (var i = 0; i < AllIndexSqls.Count; i++)
             {
-              ExecuteIndexSql(conn, idxSql);
+              ExecuteIndexSql(conn, AllIndexSqls[i]);
+              if ((i + 1) % 20 == 0 || i == AllIndexSqls.Count - 1)
+              {
+                Console.WriteLine($"[InitDbOnce] 索引进度: {i + 1}/{AllIndexSqls.Count}");
+              }
             }
 
             // 对齐 Python 端初始化行为：默认角色 + 菜单/按钮权限增量同步

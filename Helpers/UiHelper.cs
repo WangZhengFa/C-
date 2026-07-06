@@ -96,29 +96,15 @@ namespace FoodEnterpriseIMS.Helpers
 
                     if (key == "main_window_geometry")
                     {
-                        var geoToken = JToken.Parse(value);
-                        if (geoToken is JObject geo)
+                        if (TryParseWindowGeometry(value, out var geometry))
                         {
-                            result[key] = new Dictionary<string, object>
-                            {
-                                ["x"] = geo.Value<int?>("x") ?? 0,
-                                ["y"] = geo.Value<int?>("y") ?? 0,
-                                ["w"] = geo.Value<int?>("w") ?? 1280,
-                                ["h"] = geo.Value<int?>("h") ?? 800,
-                                ["maximized"] = geo.Value<bool?>("maximized") ?? false
-                            };
+                            result[key] = geometry;
                         }
                     }
                     else if (key == "main_window_splitter_sizes")
                     {
-                        var splitToken = JToken.Parse(value);
-                        if (splitToken is JArray splitArray)
+                        if (TryParseSplitterSizes(value, out var sizes))
                         {
-                            var sizes = new List<object>();
-                            foreach (var item in splitArray)
-                            {
-                                sizes.Add(item.Value<int>());
-                            }
                             result[key] = sizes;
                         }
                     }
@@ -134,6 +120,100 @@ namespace FoodEnterpriseIMS.Helpers
             {
                 return null;
             }
+        }
+
+        private static bool TryParseWindowGeometry(string raw, out Dictionary<string, object> geometry)
+        {
+            geometry = new Dictionary<string, object>();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            var text = raw.Trim();
+            if (!text.StartsWith("{") || !text.EndsWith("}"))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (JToken.Parse(text) is not JObject obj)
+                {
+                    return false;
+                }
+
+                geometry["x"] = ReadIntSafe(obj, "x", 0);
+                geometry["y"] = ReadIntSafe(obj, "y", 0);
+                geometry["w"] = ReadIntSafe(obj, "w", 1280);
+                geometry["h"] = ReadIntSafe(obj, "h", 800);
+                geometry["maximized"] = ReadBoolSafe(obj, "maximized", false);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryParseSplitterSizes(string raw, out List<object> sizes)
+        {
+            sizes = new List<object>();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            var text = raw.Trim();
+            if (!text.StartsWith("[") || !text.EndsWith("]"))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (JToken.Parse(text) is not JArray arr)
+                {
+                    return false;
+                }
+
+                foreach (var item in arr)
+                {
+                    sizes.Add(ReadIntElementSafe(item, 0));
+                }
+
+                return sizes.Count > 0;
+            }
+            catch
+            {
+                sizes.Clear();
+                return false;
+            }
+        }
+
+        private static int ReadIntSafe(JObject root, string propertyName, int fallback)
+        {
+            if (!root.TryGetValue(propertyName, StringComparison.OrdinalIgnoreCase, out var token))
+            {
+                return fallback;
+            }
+
+            return int.TryParse(token.ToString(), out var value) ? value : fallback;
+        }
+
+        private static int ReadIntElementSafe(JToken token, int fallback)
+        {
+            return int.TryParse(token.ToString(), out var value) ? value : fallback;
+        }
+
+        private static bool ReadBoolSafe(JObject root, string propertyName, bool fallback)
+        {
+            if (!root.TryGetValue(propertyName, StringComparison.OrdinalIgnoreCase, out var token))
+            {
+                return fallback;
+            }
+
+            return bool.TryParse(token.ToString(), out var value) ? value : fallback;
         }
     }
 }

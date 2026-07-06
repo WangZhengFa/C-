@@ -15,7 +15,7 @@ namespace FoodEnterpriseIMS.Services
         {
             const string sql = @"SELECT id, sort_order, nutrient, unit, rounding_interval, zero_threshold, energy_value,
 lower_error, upper_error, nrv, core, heavy_metal, is_sports_nutrition, daily_usage_range, disabled,
-param_key, param_value, description, updated_at
+description, updated_at
 FROM nutrient_parameters
 ORDER BY sort_order ASC, id DESC";
 
@@ -42,8 +42,6 @@ ORDER BY sort_order ASC, id DESC";
                     IsSportsNutrition = GetBool(reader, "is_sports_nutrition"),
                     DailyUsageRange = GetString(reader, "daily_usage_range"),
                     Disabled = GetBool(reader, "disabled"),
-                    ParamKey = GetString(reader, "param_key"),
-                    ParamValue = GetString(reader, "param_value"),
                     Description = GetString(reader, "description"),
                     UpdatedAt = GetDate(reader, "updated_at")
                 });
@@ -56,10 +54,10 @@ ORDER BY sort_order ASC, id DESC";
         {
             const string sql = @"INSERT INTO nutrient_parameters
 (sort_order, nutrient, unit, rounding_interval, zero_threshold, energy_value, lower_error, upper_error,
- nrv, core, heavy_metal, is_sports_nutrition, daily_usage_range, disabled, param_key, param_value, description)
+ nrv, core, heavy_metal, is_sports_nutrition, daily_usage_range, disabled, description)
 VALUES
 (@sort_order, @nutrient, @unit, @rounding_interval, @zero_threshold, @energy_value, @lower_error, @upper_error,
- @nrv, @core, @heavy_metal, @is_sports_nutrition, @daily_usage_range, @disabled, @param_key, @param_value, @description);
+ @nrv, @core, @heavy_metal, @is_sports_nutrition, @daily_usage_range, @disabled, @description);
 SELECT LAST_INSERT_ID();";
 
             using var conn = CreateConnection();
@@ -86,8 +84,6 @@ heavy_metal=@heavy_metal,
 is_sports_nutrition=@is_sports_nutrition,
 daily_usage_range=@daily_usage_range,
 disabled=@disabled,
-param_key=@param_key,
-param_value=@param_value,
 description=@description
 WHERE id=@id";
 
@@ -123,8 +119,6 @@ WHERE id=@id";
             cmd.Parameters.AddWithValue("@is_sports_nutrition", record.IsSportsNutrition ? 1 : 0);
             cmd.Parameters.AddWithValue("@daily_usage_range", (record.DailyUsageRange ?? string.Empty).Trim());
             cmd.Parameters.AddWithValue("@disabled", record.Disabled ? 1 : 0);
-            cmd.Parameters.AddWithValue("@param_key", (record.ParamKey ?? string.Empty).Trim());
-            cmd.Parameters.AddWithValue("@param_value", (record.ParamValue ?? string.Empty).Trim());
             cmd.Parameters.AddWithValue("@description", (record.Description ?? string.Empty).Trim());
         }
 

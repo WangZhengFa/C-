@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using FoodEnterpriseIMS.Services;
+using Newtonsoft.Json;
 
 namespace FoodEnterpriseIMS.Themes
 {
@@ -12,11 +12,6 @@ namespace FoodEnterpriseIMS.Themes
     /// </summary>
     public static class ThemeConfigHelper
     {
-        private static readonly JsonSerializerOptions _jsonOptions = new()
-        {
-            PropertyNameCaseInsensitive = true
-        };
-
         /// <summary>
         /// 读取所有主题相关配置
         /// </summary>
@@ -31,12 +26,16 @@ namespace FoodEnterpriseIMS.Themes
                 var key = cfg.TryGetValue("config_key", out var k) ? k?.ToString() ?? "" : "";
                 var val = cfg.TryGetValue("config_value", out var v) ? v?.ToString() ?? "" : "";
                 var type = cfg.TryGetValue("config_type", out var t) ? t?.ToString() ?? "string" : "string";
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
 
                 object parsed = type.ToLower() switch
                 {
                     "int" or "integer" => int.TryParse(val, out var iv) ? iv : 0,
                     "bool" or "boolean" => val is "1" or "true" or "yes" or "on",
-                    "json" => JsonSerializer.Deserialize<Dictionary<string, object>>(val, _jsonOptions) ?? new Dictionary<string, object>(),
+                    "json" => TryParseJsonDict(val),
                     _ => val
                 };
 
@@ -52,6 +51,30 @@ namespace FoodEnterpriseIMS.Themes
             }
 
             return (system, tree);
+        }
+
+        private static Dictionary<string, object> TryParseJsonDict(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return new Dictionary<string, object>();
+            }
+
+            var text = raw.Trim();
+            if (!text.StartsWith("{") || !text.EndsWith("}"))
+            {
+                return new Dictionary<string, object>();
+            }
+
+            try
+            {
+                return JsonConvert.DeserializeObject<Dictionary<string, object>>(text)
+                    ?? new Dictionary<string, object>();
+            }
+            catch
+            {
+                return new Dictionary<string, object>();
+            }
         }
 
         /// <summary>

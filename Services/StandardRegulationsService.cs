@@ -13,11 +13,11 @@ namespace FoodEnterpriseIMS.Services
     {
         public List<StandardRegulationsRecord> ListAll()
         {
-            const string sql = @"SELECT id, standard_id, node_code, category, series, standard_name, standard_code,
+            const string sql = @"SELECT standard_id, node_code, category, series, standard_name, standard_code,
 publish_dept, publish_year, applies_to_haccp, publish_date, implement_date, revision_date, effective_date,
 standard_link, new_standard_link, is_invalid, remark, sort_order, is_enabled
 FROM standard_specifications
-ORDER BY sort_order ASC, id DESC";
+ORDER BY sort_order ASC, standard_id DESC";
 
             var result = new List<StandardRegulationsRecord>();
             using var conn = CreateConnection();
@@ -27,7 +27,6 @@ ORDER BY sort_order ASC, id DESC";
             {
                 result.Add(new StandardRegulationsRecord
                 {
-                    Id = GetLong(reader, "id"),
                     StandardId = GetString(reader, "standard_id"),
                     NodeCode = GetString(reader, "node_code"),
                     Category = GetString(reader, "category"),
@@ -62,17 +61,16 @@ ORDER BY sort_order ASC, id DESC";
 VALUES
 (@standard_id, @node_code, @category, @series, @standard_name, @standard_code, @publish_dept, @publish_year,
  @applies_to_haccp, @publish_date, @implement_date, @revision_date, @effective_date, @standard_link,
- @new_standard_link, @is_invalid, @remark, @sort_order, @is_enabled);
-SELECT LAST_INSERT_ID();";
+ @new_standard_link, @is_invalid, @remark, @sort_order, @is_enabled);";
 
             using var conn = CreateConnection();
             using var cmd = new MySqlCommand(sql, conn);
             FillParameters(cmd, record);
-            var obj = cmd.ExecuteScalar();
-            return obj == null ? 0 : Convert.ToInt64(obj);
+            var affected = cmd.ExecuteNonQuery();
+            return affected > 0 ? 1 : 0;
         }
 
-        public void Update(StandardRegulationsRecord record)
+        public void Update(StandardRegulationsRecord record, string? originalStandardId = null)
         {
             const string sql = @"UPDATE standard_specifications SET
 standard_id=@standard_id,
@@ -94,21 +92,21 @@ is_invalid=@is_invalid,
 remark=@remark,
 sort_order=@sort_order,
 is_enabled=@is_enabled
-WHERE id=@id";
+WHERE standard_id=@original_standard_id";
 
             using var conn = CreateConnection();
             using var cmd = new MySqlCommand(sql, conn);
             FillParameters(cmd, record);
-            cmd.Parameters.AddWithValue("@id", record.Id);
+            cmd.Parameters.AddWithValue("@original_standard_id", string.IsNullOrWhiteSpace(originalStandardId) ? record.StandardId : originalStandardId);
             cmd.ExecuteNonQuery();
         }
 
-        public void Delete(long id)
+        public void Delete(string standardId)
         {
-            const string sql = "DELETE FROM standard_specifications WHERE id=@id";
+            const string sql = "DELETE FROM standard_specifications WHERE standard_id=@standard_id";
             using var conn = CreateConnection();
             using var cmd = new MySqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@standard_id", (standardId ?? string.Empty).Trim());
             cmd.ExecuteNonQuery();
         }
 

@@ -1,6 +1,5 @@
 using System;
 using System.Net.Http;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace FoodEnterpriseIMS.Helpers
@@ -67,20 +66,17 @@ namespace FoodEnterpriseIMS.Helpers
         {
             try
             {
-                var url = $"https://wttr.in/{Uri.EscapeDataString(_city)}?format=j1";
-                var json = await Http.GetStringAsync(url).ConfigureAwait(false);
-                using var doc = JsonDocument.Parse(json);
-
-                var root = doc.RootElement;
-                var current = root.GetProperty("current_condition")[0];
-                var temperature = current.GetProperty("temp_C").GetString() ?? "--";
-                var weatherDesc = current.GetProperty("weatherDesc")[0].GetProperty("value").GetString() ?? "--";
+                var url = $"https://wttr.in/{Uri.EscapeDataString(_city)}?format=%t|%C";
+                var text = (await Http.GetStringAsync(url).ConfigureAwait(false)).Trim();
+                var parts = text.Split('|', 2, StringSplitOptions.TrimEntries);
+                var temperature = parts.Length > 0 && !string.IsNullOrWhiteSpace(parts[0]) ? parts[0] : "--°C";
+                var weatherDesc = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : "--";
 
                 var snapshot = new WeatherSnapshot
                 {
                     City = _city,
                     Description = weatherDesc,
-                    TemperatureText = $"{temperature}°C",
+                    TemperatureText = temperature,
                     UpdatedAt = DateTime.Now
                 };
 

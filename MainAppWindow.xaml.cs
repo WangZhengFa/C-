@@ -1,25 +1,29 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Timers;
 using System.Windows;
+using System.Windows.Threading;
 using Newtonsoft.Json.Linq;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
+using Newtonsoft.Json;
 using FoodEnterpriseIMS.Helpers;
 using FoodEnterpriseIMS.Models;
 using FoodEnterpriseIMS.Services;
 using FoodEnterpriseIMS.Themes;
 using FoodEnterpriseIMS.TreeCore;
-using FoodEnterpriseIMS.Widgets;
 using MySqlConnector;
 using 食品信息管理系统.Views.Pages;
 using 食品信息管理系统.Views.Dialogs;
 using 食品信息管理系统.Services;
 using Timer = System.Timers.Timer;
+using WF = System.Windows.Forms;
 
 namespace FoodEnterpriseIMS
 {
@@ -50,13 +54,17 @@ namespace FoodEnterpriseIMS
             }
         }
         private bool _leftCollapsed;
-        private readonly int _defaultLeftCollapsedWidth = 120;
+        private const double DefaultTreePanelWidth = 170;
+        private const double MinTreePanelWidth = 150;
+        private const double MaxTreePanelWidth = 220;
+        private double _expandedTreePanelWidth = DefaultTreePanelWidth;
         private List<string> _rolePermissionKeys;
         private Dictionary<string, string> _menuKeyMap = new Dictionary<string, string>();
         private string _currentPageKey;
         private int? _pendingTreeSelection;
         private Dictionary<string, UIElement> _pages = new Dictionary<string, UIElement>();
         private bool _treeContextMenuAttached;
+        private readonly WF.TreeView _menuTree = new WF.TreeView();
         private const string MenuTreeKey = "system_menu";
 
         // 定时器
@@ -64,9 +72,11 @@ namespace FoodEnterpriseIMS
         private readonly Timer _idleTimer = new Timer();
         private readonly Timer _dbStatusTimer = new Timer(30000);
         private readonly Timer _weatherRefreshTimer = new Timer(10 * 60 * 1000);
+        private readonly DispatcherTimer _dateTimeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         private DateTime _lastActivityTime;
         private bool _idleExitEnabled = false;
-        private int _idleExitTimeoutMs = 15 * 60 * 1000; // 15分钟
+        private int _idleExitTimeoutMs = 30 * 60 * 1000; // 30分钟，仅在显式启用空闲退出时生效
+        private bool _isAutoExitInProgress;
         private bool _isReloginInProgress;
         private DateTime? _lastWeatherUpdatedAt;
         private const string WeatherCitySettingKey = "weather_city";
@@ -89,6 +99,8 @@ namespace FoodEnterpriseIMS
 
             // 初始化字体
             FontManager.RegisterFonts();
+
+            InitializeMainMenuTree();
             
             // 应用主题（优先读取数据库配置）
             ApplyThemePreference();
@@ -126,9 +138,8 @@ namespace FoodEnterpriseIMS
             // 空闲退出定时器
             _idleTimer.Interval = 1000; // 1秒检查一次
             _idleTimer.Elapsed += (s, e) => OnIdleTimeout();
-            _idleExitEnabled = true;
+            _idleExitEnabled = false;
             _lastActivityTime = DateTime.Now;
-            _idleTimer.Start();
 
             // 数据库状态检查定时器
             _dbStatusTimer.Elapsed += (s, e) => CheckDbStatus();
@@ -154,9 +165,8 @@ namespace FoodEnterpriseIMS
             
             // 初始化时间显示
             UpdateDateTime();
-            var dateTimer = new Timer(1000);
-            dateTimer.Elapsed += (s, e) => Dispatcher.Invoke(UpdateDateTime);
-            dateTimer.Start();
+            _dateTimeTimer.Tick += DateTimeTimer_Tick;
+            _dateTimeTimer.Start();
             
             // 初始化数据库状态
             CheckDbStatus();
@@ -222,17 +232,21 @@ namespace FoodEnterpriseIMS
                 return;
             }
 
+            if (!_isAutoExitInProgress)
+            {
+                var confirmWindow = new ConfirmExitWindow { Owner = this };
+                var result = confirmWindow.ShowDialog();
+                if (result != true)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+
             WeatherHelper.WeatherUpdated -= OnWeatherUpdated;
             WeatherHelper.WeatherError -= OnWeatherError;
             _weatherRefreshTimer.Stop();
-
-            var confirmWindow = new ConfirmExitWindow { Owner = this };
-            var result = confirmWindow.ShowDialog();
-            if (result != true)
-            {
-                e.Cancel = true;
-                    return;
-            }
+            _dateTimeTimer.Stop();
 
             try
             {
@@ -253,47 +267,55 @@ namespace FoodEnterpriseIMS
         private void ToggleTreePanel_Click(object sender, MouseButtonEventArgs e)
         {
             _leftCollapsed = !_leftCollapsed;
-            ColTreePanel.Width = _leftCollapsed ? new GridLength(0) : new GridLength(_defaultLeftCollapsedWidth);
+            if (_leftCollapsed)
+            {
+                if (ColTreePanel.ActualWidth > 0)
+                {
+                    _expandedTreePanelWidth = ClampTreePanelWidth(ColTreePanel.ActualWidth);
+                }
+
+                ColTreePanel.Width = new GridLength(0);
+            }
+            else
+            {
+                ColTreePanel.Width = new GridLength(ClampTreePanelWidth(_expandedTreePanelWidth));
+            }
+
             LblToggleIcon.Content = _leftCollapsed ? ">>" : "<<";
         }
 
-        /// <summary>
-        /// 树节点点击事件
-        /// </summary>
-        private void TreeMenu_ItemClicked(object sender, RoutedEventArgs e)
+        private void InitializeMainMenuTree()
         {
-            // 从事件源向上查找 TreeViewItem
-            var item = FindAncestor<TreeViewItem>((DependencyObject)e.OriginalSource);
-            if (item == null)
-                return;
+            ClassicWinFormsTreeHelper.ApplyClassicStyle(_menuTree, 18, 22);
+            _menuTree.Font = new Font("Microsoft YaHei", 9f);
 
-            var pageKey = item.Tag?.ToString();
-            if (!string.IsNullOrEmpty(pageKey))
+            _menuTree.AfterSelect += (_, e) =>
             {
-                OpenPageByKey(pageKey);
-            }
-        }
+                var pageKey = e.Node?.Tag?.ToString();
+                if (!string.IsNullOrWhiteSpace(pageKey))
+                {
+                    OpenPageByKey(pageKey);
+                }
+            };
 
-        /// <summary>
-        /// 树节点双击事件
-        /// </summary>
-        private void TreeMenu_ItemDoubleClicked(object sender, RoutedEventArgs e)
-        {
-            TreeMenu_ItemClicked(sender, e);
-        }
-
-        /// <summary>
-        /// 向上查找指定类型的祖先元素
-        /// </summary>
-        private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
-        {
-            while (current != null)
+            _menuTree.NodeMouseDoubleClick += (_, e) =>
             {
-                if (current is T ancestor)
-                    return ancestor;
-                current = VisualTreeHelper.GetParent(current);
-            }
-            return null;
+                var pageKey = e.Node?.Tag?.ToString();
+                if (!string.IsNullOrWhiteSpace(pageKey))
+                {
+                    OpenPageByKey(pageKey);
+                }
+            };
+
+            _menuTree.NodeMouseClick += (_, e) =>
+            {
+                if (e.Button == WF.MouseButtons.Right)
+                {
+                    _menuTree.SelectedNode = e.Node;
+                }
+            };
+
+            TreeMenuHost.Child = _menuTree;
         }
 
         /// <summary>
@@ -302,6 +324,16 @@ namespace FoodEnterpriseIMS
         private void OnUserActivity(object sender, EventArgs e)
         {
             _lastActivityTime = DateTime.Now;
+        }
+
+        private void DateTimeTimer_Tick(object? sender, EventArgs e)
+        {
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            UpdateDateTime();
         }
 
         /// <summary>
@@ -322,19 +354,40 @@ namespace FoodEnterpriseIMS
             if (_treeContextMenuAttached) return;
             _treeContextMenuAttached = true;
 
-            TreeMenu.NodeAddRequested += TreeMenu_NodeAddRequested;
-            TreeMenu.NodeEditRequested += TreeMenu_NodeEditRequested;
-            TreeMenu.NodeDeleteRequested += TreeMenu_NodeDeleteRequested;
-            TreeMenu.NodeExpandRequested += TreeMenu_NodeExpandRequested;
-            TreeMenu.NodeCollapseRequested += TreeMenu_NodeCollapseRequested;
+            ClassicWinFormsTreeHelper.AttachStandardContextMenu(_menuTree, new StandardTreeMenuActions
+            {
+                AddSibling = TreeMenu_NodeAddSiblingRequested,
+                AddChild = TreeMenu_NodeAddChildRequested,
+                EditNode = TreeMenu_NodeEditRequested,
+                DeleteNode = TreeMenu_NodeDeleteRequested,
+
+                CopySubtreeToRoot = TreeMenu_CopySubtreeToRoot,
+                MoveNodeToTarget = TreeMenu_MoveNodeToTarget,
+                MoveUp = TreeMenu_MoveUp,
+                MoveDown = TreeMenu_MoveDown,
+                MoveTop = TreeMenu_MoveTop,
+                MoveBottom = TreeMenu_MoveBottom,
+
+                AuditIntegrity = TreeMenu_AuditIntegrity,
+                NormalizeAllSiblingSort = TreeMenu_NormalizeAllSort,
+                ExportJson = TreeMenu_ExportJson,
+                ImportJson = TreeMenu_ImportJson,
+
+                ExpandCurrent = TreeMenu_NodeExpandRequested,
+                CollapseCurrent = TreeMenu_NodeCollapseRequested,
+                ExpandAll = () => _menuTree.ExpandAll(),
+                CollapseAll = () => _menuTree.CollapseAll(),
+
+                RefreshTree = RefreshMenuTree
+            });
         }
 
         /// <summary>
         /// 新增节点
         /// </summary>
-        private void TreeMenu_NodeAddRequested(object sender, RoutedEventArgs e)
+        private void TreeMenu_NodeAddChildRequested()
         {
-            var parentNode = (e as TreeNodeRoutedEventArgs)?.Node ?? e.Source as TreeNode;
+            var parentNode = CreateModelNodeFromUi(_menuTree.SelectedNode);
             var newNode = new TreeNode
             {
                 ParentCode = parentNode?.Code,
@@ -343,12 +396,25 @@ namespace FoodEnterpriseIMS
             OpenNodeEditWindow(newNode, MenuTreeKey, isNew: true);
         }
 
+        private void TreeMenu_NodeAddSiblingRequested()
+        {
+            var current = _menuTree.SelectedNode;
+            var parentCode = current?.Parent?.Tag?.ToString();
+            var newNode = new TreeNode
+            {
+                ParentCode = parentCode,
+                SortOrder = 0
+            };
+
+            OpenNodeEditWindow(newNode, MenuTreeKey, isNew: true);
+        }
+
         /// <summary>
         /// 编辑节点
         /// </summary>
-        private void TreeMenu_NodeEditRequested(object sender, RoutedEventArgs e)
+        private void TreeMenu_NodeEditRequested()
         {
-            var node = (e as TreeNodeRoutedEventArgs)?.Node ?? e.Source as TreeNode;
+            var node = CreateModelNodeFromUi(_menuTree.SelectedNode);
             if (node == null || string.IsNullOrWhiteSpace(node.Code)) return;
             OpenNodeEditWindow(node, MenuTreeKey, isNew: false);
         }
@@ -356,9 +422,9 @@ namespace FoodEnterpriseIMS
         /// <summary>
         /// 删除节点
         /// </summary>
-        private void TreeMenu_NodeDeleteRequested(object sender, RoutedEventArgs e)
+        private void TreeMenu_NodeDeleteRequested()
         {
-            var node = (e as TreeNodeRoutedEventArgs)?.Node ?? e.Source as TreeNode;
+            var node = CreateModelNodeFromUi(_menuTree.SelectedNode);
             if (node == null || string.IsNullOrWhiteSpace(node.Code)) return;
 
             var result = MessageBox.Show($"确定删除节点 [{node.Title}] 吗？", "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Question);
@@ -380,23 +446,314 @@ namespace FoodEnterpriseIMS
         /// <summary>
         /// 展开节点
         /// </summary>
-        private void TreeMenu_NodeExpandRequested(object sender, RoutedEventArgs e)
+        private void TreeMenu_NodeExpandRequested()
         {
-            if (TreeMenu.SelectedItem is TreeViewItem item)
+            if (_menuTree.SelectedNode != null)
             {
-                item.IsExpanded = true;
+                _menuTree.SelectedNode.Expand();
             }
         }
 
         /// <summary>
         /// 折叠节点
         /// </summary>
-        private void TreeMenu_NodeCollapseRequested(object sender, RoutedEventArgs e)
+        private void TreeMenu_NodeCollapseRequested()
         {
-            if (TreeMenu.SelectedItem is TreeViewItem item)
+            if (_menuTree.SelectedNode != null)
             {
-                item.IsExpanded = false;
+                _menuTree.SelectedNode.Collapse();
             }
+        }
+
+        private void TreeMenu_CopySubtreeToRoot()
+        {
+            var node = CreateModelNodeFromUi(_menuTree.SelectedNode);
+            if (node == null || string.IsNullOrWhiteSpace(node.Code))
+            {
+                return;
+            }
+
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var ops = new TreeOperations(repo);
+                var source = ops.FindNode(node.Code);
+                if (source == null)
+                {
+                    MessageBox.Show("未找到待复制节点。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                CopyNodeRecursive(ops, source, null);
+                RefreshMenuTree();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"复制失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private static void CopyNodeRecursive(TreeOperations ops, TreeNode source, string? parentCode)
+        {
+            var copied = ops.AddNode(source.Title, parentCode, new Dictionary<string, object>(source.Payload));
+            foreach (var child in source.Children.OrderBy(c => c.SortOrder))
+            {
+                CopyNodeRecursive(ops, child, copied.Code);
+            }
+        }
+
+        private void TreeMenu_MoveNodeToTarget()
+        {
+            var source = _menuTree.SelectedNode;
+            if (source == null)
+            {
+                MessageBox.Show("请先选择要移动的节点。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var ops = new TreeOperations(repo);
+
+                var sourceCode = source.Tag?.ToString() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(sourceCode))
+                {
+                    MessageBox.Show("当前节点缺少编码，无法移动。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var sourceNode = ops.FindNode(sourceCode);
+                if (sourceNode == null)
+                {
+                    MessageBox.Show("未找到当前节点的完整数据。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var dialog = new TreeNodeMoveWindow(ops.BuildTree(), sourceNode)
+                {
+                    Owner = this
+                };
+
+                if (dialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                ops.MoveNode(
+                    sourceNode.Code,
+                    dialog.SelectedParentCode,
+                    regenerateCodes: dialog.RegenerateCodes,
+                    targetIndex: dialog.TargetIndex);
+
+                RefreshMenuTree();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"移动失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void TreeMenu_MoveUp()
+        {
+            MoveNodeInSameLevel(-1);
+        }
+
+        private void TreeMenu_MoveDown()
+        {
+            MoveNodeInSameLevel(1);
+        }
+
+        private void TreeMenu_MoveTop()
+        {
+            MoveNodeToEdge(true);
+        }
+
+        private void TreeMenu_MoveBottom()
+        {
+            MoveNodeToEdge(false);
+        }
+
+        private void MoveNodeInSameLevel(int delta)
+        {
+            var node = _menuTree.SelectedNode;
+            if (node == null)
+            {
+                return;
+            }
+
+            var siblings = node.Parent?.Nodes ?? _menuTree.Nodes;
+            var idx = node.Index;
+            var target = idx + delta;
+            if (target < 0 || target >= siblings.Count)
+            {
+                return;
+            }
+
+            var codes = siblings.Cast<WF.TreeNode>().Select(n => n.Tag?.ToString() ?? string.Empty).ToList();
+            (codes[idx], codes[target]) = (codes[target], codes[idx]);
+
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var parentCode = node.Parent?.Tag?.ToString();
+                repo.Resequence(parentCode, codes);
+                RefreshMenuTree();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"移动失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void MoveNodeToEdge(bool toTop)
+        {
+            var node = _menuTree.SelectedNode;
+            if (node == null)
+            {
+                return;
+            }
+
+            var siblings = node.Parent?.Nodes ?? _menuTree.Nodes;
+            var codes = siblings.Cast<WF.TreeNode>().Select(n => n.Tag?.ToString() ?? string.Empty).ToList();
+            codes.RemoveAt(node.Index);
+            if (toTop)
+            {
+                codes.Insert(0, node.Tag?.ToString() ?? string.Empty);
+            }
+            else
+            {
+                codes.Add(node.Tag?.ToString() ?? string.Empty);
+            }
+
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var parentCode = node.Parent?.Tag?.ToString();
+                repo.Resequence(parentCode, codes);
+                RefreshMenuTree();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"移动失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void TreeMenu_AuditIntegrity()
+        {
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var ops = new TreeOperations(repo);
+                var audit = ops.AuditIntegrity();
+                var msg = $"无效编码: {audit["invalid_codes"].Count}\n缺失父节点: {audit["missing_parents"].Count}\n重复编码: {audit["duplicates"].Count}";
+                MessageBox.Show(msg, "审计结果", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"审计失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void TreeMenu_NormalizeAllSort()
+        {
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var ops = new TreeOperations(repo);
+                var groups = ops.NormalizeAllSortOrders();
+                RefreshMenuTree();
+                MessageBox.Show($"已规范 {groups} 组同级排序。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"规范排序失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void TreeMenu_ExportJson()
+        {
+            var dialog = new SaveFileDialog
+            {
+                Filter = "JSON 文件 (*.json)|*.json",
+                FileName = $"menu_tree_{DateTime.Now:yyyyMMddHHmmss}.json"
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var ops = new TreeOperations(repo);
+                var data = ops.ExportTree();
+                var json = JsonConvert.SerializeObject(data, Formatting.Indented);
+                File.WriteAllText(dialog.FileName, json);
+                MessageBox.Show("导出成功。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"导出失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void TreeMenu_ImportJson()
+        {
+            var dialog = new OpenFileDialog
+            {
+                Filter = "JSON 文件 (*.json)|*.json"
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            if (MessageBox.Show("导入会覆盖现有树结构，是否继续？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                var json = File.ReadAllText(dialog.FileName);
+                var data = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(json) ?? new List<Dictionary<string, object>>();
+                using var conn = CreateDbConnection();
+                var repo = new TreeRepository(conn, MenuTreeKey);
+                var ops = new TreeOperations(repo);
+                ops.ImportTree(data, clearExisting: true);
+                RefreshMenuTree();
+                MessageBox.Show("导入成功。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"导入失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private TreeNode? CreateModelNodeFromUi(WF.TreeNode? node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            return new TreeNode
+            {
+                Code = node.Tag?.ToString() ?? string.Empty,
+                Title = node.Text ?? string.Empty,
+                ParentCode = node.Parent?.Tag?.ToString(),
+                SortOrder = node.Index + 1
+            };
         }
 
         /// <summary>
@@ -467,7 +824,7 @@ namespace FoodEnterpriseIMS
             {
                 if (string.IsNullOrWhiteSpace(pageKey)) return;
 
-                if (new[] { "relogin", "exit_system", "change_password", "about", "theme_settings", "tree_style_settings", "user_management" }.Contains(pageKey))
+                if (new[] { "relogin", "exit_system", "change_password", "about", "theme_settings", "tree_style_settings" }.Contains(pageKey))
                 {
                     HandleSpecialActions(pageKey);
                     return;
@@ -531,6 +888,7 @@ namespace FoodEnterpriseIMS
                 {
                     page = CreatePageByReflection(csharpClass, title);
                     AttachCloseEvent(page);
+                    AttachPermissionChangedEvent(page);
                 }
                 else if (!string.IsNullOrWhiteSpace(componentPath))
                 {
@@ -539,6 +897,7 @@ namespace FoodEnterpriseIMS
                         : $"食品信息管理系统.Views.Pages.{componentPath}";
                     page = CreatePageByReflection(className, title);
                     AttachCloseEvent(page);
+                    AttachPermissionChangedEvent(page);
                 }
                 else
                 {
@@ -656,6 +1015,23 @@ namespace FoodEnterpriseIMS
             }
         }
 
+        private void AttachPermissionChangedEvent(UIElement page)
+        {
+            try
+            {
+                var permissionEvent = page.GetType().GetEvent("PermissionsChanged");
+                if (permissionEvent != null && permissionEvent.EventHandlerType == typeof(EventHandler))
+                {
+                    var handler = new EventHandler((s, e) => OnPermissionsChanged());
+                    permissionEvent.AddEventHandler(page, handler);
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"[AttachPermissionChangedEvent] 附加权限变更事件失败: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// 关闭当前内容页
         /// </summary>
@@ -690,15 +1066,6 @@ namespace FoodEnterpriseIMS
                     break;
                 case "tree_style_settings":
                     ShowTreeStyleSettingsDialog();
-                    break;
-                case "user_management":
-                    var win = new 食品信息管理系统.Views.UserManagementWindow(_db, _currentRole)
-                    {
-                        Owner = this
-                    };
-                    win.PermissionsChanged += (_, _) => OnPermissionsChanged();
-                    win.ShowDialog();
-                    OnPermissionsChanged();
                     break;
             }
         }
@@ -1131,8 +1498,8 @@ namespace FoodEnterpriseIMS
                 ThemeConfigHelper.SaveConfig(_db, "Settings", "hide_root_branch", hideRootCheck.IsChecked == true ? "1" : "0");
                 ThemeConfigHelper.SaveConfig(_db, "Settings", "tree_classic_use_system", useSystemCheck.IsChecked == true ? "1" : "0");
 
-                TreeStyleHelper.ApplyGlobalTreeStyle(TreeMenu, _db);
-                TreeStyleHelper.ExpandTreeLevel(TreeMenu, expandLevel);
+                ApplyMainTreeVisualConfig();
+                ExpandMainTreeLevel(expandLevel);
 
                 dialog.DialogResult = true;
                 dialog.Close();
@@ -1254,17 +1621,41 @@ namespace FoodEnterpriseIMS
         /// </summary>
         private void OnIdleTimeout()
         {
-            if (!_idleExitEnabled) return;
-
-            var idleTime = (DateTime.Now - _lastActivityTime).TotalMilliseconds;
-            if (idleTime > _idleExitTimeoutMs)
+            if (!_idleExitEnabled || _isAutoExitInProgress)
             {
-                Dispatcher.Invoke(() =>
-                {
-                    MessageBox.Show("长时间未操作，系统将自动退出", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-                    Application.Current.Shutdown();
-                });
+                return;
             }
+
+            var now = DateTime.Now;
+            var idleTime = (now - _lastActivityTime).TotalMilliseconds;
+            if (idleTime <= _idleExitTimeoutMs)
+            {
+                return;
+            }
+
+            _isAutoExitInProgress = true;
+            _idleExitEnabled = false;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var app = Application.Current;
+                    if (app != null)
+                    {
+                        app.Shutdown();
+                    }
+                    else
+                    {
+                        Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"[OnIdleTimeout] 自动退出失败: {ex.Message}");
+                    _isAutoExitInProgress = false;
+                    _idleExitEnabled = true;
+                }
+            }));
         }
 
         /// <summary>
@@ -1276,16 +1667,132 @@ namespace FoodEnterpriseIMS
             {
                 RefreshRolePermissionsCache();
                 var menuList = _db.GetMenuList();
-                TreeHelper.BuildMenuTree(TreeMenu, menuList, _currentRole);
+
+                _menuTree.BeginUpdate();
+                _menuTree.Nodes.Clear();
+                BuildMainMenuTree(menuList);
                 BuildMenuKeyMap();
                 ApplyMenuPermissionsToTree();
-                TreeStyleHelper.ApplyGlobalTreeStyle(TreeMenu, _db);
+                ApplyMainTreeVisualConfig();
+
                 var expandLevel = ThemeConfigHelper.CfgInt(_db, "Settings", "tree_expand_level", 2);
-                TreeStyleHelper.ExpandTreeLevel(TreeMenu, expandLevel);
+                ExpandMainTreeLevel(expandLevel);
+                _menuTree.EndUpdate();
             }
             catch (Exception ex)
             {
                 WriteLog($"[RefreshMenuTree] 错误: {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
+        private void BuildMainMenuTree(List<Dictionary<string, object>> menuList)
+        {
+            if (menuList == null || menuList.Count == 0)
+            {
+                return;
+            }
+
+            var groups = menuList
+                .Where(m => m != null)
+                .GroupBy(m => GetString(m, "parent_key"))
+                .ToDictionary(g => g.Key, g => g.OrderBy(item => GetInt(item, "sort_order")).ToList());
+
+            var roots = groups.TryGetValue(string.Empty, out var rootList)
+                ? rootList
+                : menuList.Where(m => string.IsNullOrEmpty(GetString(m, "parent_key"))).ToList();
+
+            foreach (var menu in roots)
+            {
+                var node = CreateMenuTreeNode(menu, groups);
+                if (node != null)
+                {
+                    _menuTree.Nodes.Add(node);
+                }
+            }
+        }
+
+        private static WF.TreeNode? CreateMenuTreeNode(Dictionary<string, object> menu, Dictionary<string, List<Dictionary<string, object>>> groups)
+        {
+            var key = GetString(menu, "menu_key");
+            var title = GetString(menu, "title");
+            if (string.IsNullOrWhiteSpace(key) && string.IsNullOrWhiteSpace(title))
+            {
+                return null;
+            }
+
+            var node = new WF.TreeNode
+            {
+                Text = string.IsNullOrWhiteSpace(title) ? key : title,
+                Tag = key
+            };
+
+            if (groups.TryGetValue(key, out var children))
+            {
+                foreach (var child in children)
+                {
+                    var childNode = CreateMenuTreeNode(child, groups);
+                    if (childNode != null)
+                    {
+                        node.Nodes.Add(childNode);
+                    }
+                }
+            }
+
+            return node;
+        }
+
+        private static string GetString(Dictionary<string, object> dict, string key)
+        {
+            if (dict == null) return string.Empty;
+            return dict.TryGetValue(key, out var value) && value != null ? value.ToString() ?? string.Empty : string.Empty;
+        }
+
+        private static int GetInt(Dictionary<string, object> dict, string key)
+        {
+            if (dict == null) return 0;
+            var s = GetString(dict, key);
+            return int.TryParse(s, out var v) ? v : 0;
+        }
+
+        private void ExpandMainTreeLevel(int level)
+        {
+            if (level <= 0)
+            {
+                _menuTree.CollapseAll();
+                return;
+            }
+
+            if (level >= 2)
+            {
+                _menuTree.ExpandAll();
+                return;
+            }
+
+            foreach (WF.TreeNode node in _menuTree.Nodes)
+            {
+                node.Expand();
+                foreach (WF.TreeNode child in node.Nodes)
+                {
+                    child.Collapse();
+                }
+            }
+        }
+
+        private void ApplyMainTreeVisualConfig()
+        {
+            var indent = ThemeConfigHelper.CfgInt(_db, "Settings", "tree_indent", 18);
+            var rowHeight = ThemeConfigHelper.CfgInt(_db, "Settings", "tree_row_height", 22);
+            var hideRootBranch = ThemeConfigHelper.CfgBool(_db, "Settings", "hide_root_branch", false);
+            var useSysStyle = ThemeConfigHelper.CfgBool(_db, "Settings", "tree_classic_use_system", true);
+
+            _menuTree.Indent = Math.Max(10, Math.Min(48, indent));
+            _menuTree.ItemHeight = Math.Max(18, Math.Min(48, rowHeight));
+            _menuTree.ShowRootLines = !hideRootBranch;
+
+            if (useSysStyle)
+            {
+                _menuTree.BackColor = System.Drawing.SystemColors.Window;
+                _menuTree.ForeColor = System.Drawing.SystemColors.WindowText;
             }
         }
 
@@ -1331,7 +1838,8 @@ namespace FoodEnterpriseIMS
                     var treeWidth = ReadDouble(splitList[0], 0);
                     if (treeWidth > 0)
                     {
-                        ColTreePanel.Width = new GridLength(treeWidth);
+                        _expandedTreePanelWidth = ClampTreePanelWidth(treeWidth);
+                        ColTreePanel.Width = new GridLength(_expandedTreePanelWidth);
                     }
                 }
             }
@@ -1339,6 +1847,16 @@ namespace FoodEnterpriseIMS
             {
                 System.Diagnostics.Debug.WriteLine($"恢复窗口尺寸失败：{ex.Message}");
             }
+        }
+
+        private static double ClampTreePanelWidth(double width)
+        {
+            if (double.IsNaN(width) || double.IsInfinity(width))
+            {
+                return DefaultTreePanelWidth;
+            }
+
+            return Math.Max(MinTreePanelWidth, Math.Min(width, MaxTreePanelWidth));
         }
 
         private static int ReadInt(Dictionary<string, object> map, string key, int fallback)
@@ -1443,32 +1961,46 @@ namespace FoodEnterpriseIMS
                 return;
             }
 
-            foreach (var raw in TreeMenu.Items)
+            var toRemove = new List<WF.TreeNode>();
+            foreach (WF.TreeNode node in _menuTree.Nodes)
             {
-                if (raw is TreeViewItem item)
+                if (!ApplyPermissionToItem(node))
                 {
-                    ApplyPermissionToItem(item);
+                    toRemove.Add(node);
                 }
+            }
+
+            foreach (var node in toRemove)
+            {
+                _menuTree.Nodes.Remove(node);
             }
         }
 
-        private bool ApplyPermissionToItem(TreeViewItem item)
+        private bool ApplyPermissionToItem(WF.TreeNode item)
         {
             var hasAllowedChild = false;
-            foreach (var raw in item.Items)
+            var childRemove = new List<WF.TreeNode>();
+            foreach (WF.TreeNode child in item.Nodes)
             {
-                if (raw is TreeViewItem child && ApplyPermissionToItem(child))
+                if (ApplyPermissionToItem(child))
                 {
                     hasAllowedChild = true;
                 }
+                else
+                {
+                    childRemove.Add(child);
+                }
+            }
+
+            foreach (var child in childRemove)
+            {
+                item.Nodes.Remove(child);
             }
 
             var rawKey = item.Tag?.ToString() ?? string.Empty;
             var menuKey = _menuKeyMap.TryGetValue(rawKey, out var mapped) ? mapped : rawKey;
             var allowed = IsMenuKeyAllowed(menuKey);
             var visible = allowed || hasAllowedChild;
-
-            item.Visibility = visible ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             return visible;
         }
         #endregion

@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.IO;
 using System.Linq;
 
@@ -28,12 +29,43 @@ namespace 食品信息管理系统.Services
             try
             {
                 var json = File.ReadAllText(ConfigPath);
-                return JsonConvert.DeserializeObject<Dictionary<string, object>>(json) ?? new Dictionary<string, object>();
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return new Dictionary<string, object>();
+                }
+
+                var token = JToken.Parse(json);
+                if (token is not JObject obj)
+                {
+                    return new Dictionary<string, object>();
+                }
+
+                var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                foreach (var prop in obj.Properties())
+                {
+                    result[prop.Name] = ConvertJToken(prop.Value);
+                }
+
+                return result;
             }
             catch
             {
                 return new Dictionary<string, object>();
             }
+        }
+
+        private static object ConvertJToken(JToken token)
+        {
+            return token.Type switch
+            {
+                JTokenType.String => token.ToString(),
+                JTokenType.Integer => token.Value<long>(),
+                JTokenType.Float => token.Value<double>(),
+                JTokenType.Boolean => token.Value<bool>(),
+                JTokenType.Array => token.Children().Select(ConvertJToken).ToList(),
+                JTokenType.Object => ((JObject)token).Properties().ToDictionary(p => p.Name, p => ConvertJToken(p.Value), StringComparer.OrdinalIgnoreCase),
+                _ => token.ToString()
+            };
         }
 
         private static void SaveToFile()

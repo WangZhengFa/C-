@@ -81,7 +81,10 @@
                         <Border BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 Background="{TemplateBinding Background}">
-                            <ScrollViewer CanContentScroll="True" Focusable="False">
+                            <ScrollViewer CanContentScroll="True"
+                                          Focusable="False"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Auto">
                                 <ItemsPresenter Margin="{TemplateBinding Padding}"/>
                             </ScrollViewer>
                         </Border>
@@ -221,7 +224,7 @@
 
         <!-- 复选框 -->
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{x:Static local:ThemeConstants+DarkColors.Foreground}"/>
+            <Setter Property="Foreground" Value="{StaticResource DarkForeground}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
@@ -337,7 +340,10 @@
                         <Border BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 Background="{TemplateBinding Background}">
-                            <ScrollViewer CanContentScroll="True" Focusable="False">
+                            <ScrollViewer CanContentScroll="True"
+                                          Focusable="False"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Auto">
                                 <ItemsPresenter Margin="{TemplateBinding Padding}"/>
                             </ScrollViewer>
                         </Border>
@@ -477,7 +483,7 @@
 
         <!-- 复选框 -->
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{x:Static local:ThemeConstants+LightColors.Foreground}"/>
+            <Setter Property="Foreground" Value="{StaticResource LightForeground}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">

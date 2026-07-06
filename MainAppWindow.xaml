@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:FoodEnterpriseIMS"
-        xmlns:widgets="clr-namespace:FoodEnterpriseIMS.Widgets"
+    xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
         mc:Ignorable="d"
         Title="食品企业信息管理系统" Height="800" Width="1280"
         MinHeight="600" MinWidth="960"
@@ -48,7 +48,7 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="20"/> <!-- 切换按钮列 -->
-                <ColumnDefinition Width="120" x:Name="ColTreePanel"/> <!-- 树面板列 -->
+                <ColumnDefinition Width="170" x:Name="ColTreePanel"/> <!-- 树面板列 -->
                 <ColumnDefinition Width="*"/> <!-- 内容区域列 -->
             </Grid.ColumnDefinitions>
 
@@ -60,9 +60,7 @@
 
             <!-- 树菜单面板 -->
             <Border Grid.Column="1" BorderThickness="1" BorderBrush="#999999" CornerRadius="4">
-                <widgets:MenuTreeView x:Name="TreeMenu" Header="系统菜单" 
-                                     ItemClicked="TreeMenu_ItemClicked"
-                                     ItemDoubleClicked="TreeMenu_ItemDoubleClicked"/>
+                <wfi:WindowsFormsHost x:Name="TreeMenuHost"/>
             </Border>
 
             <!-- 内容区域 -->

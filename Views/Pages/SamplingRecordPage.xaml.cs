@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -16,6 +17,7 @@ using FoodEnterpriseIMS.Models;
 using FoodEnterpriseIMS.Services;
 using FoodEnterpriseIMS.TreeCore;
 using 食品信息管理系统.Views.Dialogs;
+using WF = System.Windows.Forms;
 
 namespace 食品信息管理系统.Views.Pages
 {
@@ -35,6 +37,7 @@ namespace 食品信息管理系统.Views.Pages
         private readonly DispatcherTimer _autoRefreshTimer = new DispatcherTimer();
         private ObservableCollection<SamplingRecord> _records;
         private readonly ICollectionView _recordView;
+        private readonly WF.TreeView _nodeTree = new();
         private const string AutoRefreshSecondsKey = "sample_record.auto_refresh_seconds";
         private const string DefaultExportDirectoryKey = "sample_record.default_export_dir";
 
@@ -53,11 +56,27 @@ namespace 食品信息管理系统.Views.Pages
             _recordView = CollectionViewSource.GetDefaultView(_records);
             _recordView.Filter = RecordFilter;
             RecordGrid.ItemsSource = _recordView;
+            InitializeNodeTree();
             ApplyButtonPermissions();
             InitAutoRefresh();
             LoadMaterialNodes();
             LoadRecords();
             InitFilterOptions();
+        }
+
+        private void InitializeNodeTree()
+        {
+            _nodeTree.BorderStyle = WF.BorderStyle.None;
+            _nodeTree.ShowLines = true;
+            _nodeTree.ShowPlusMinus = true;
+            _nodeTree.ShowRootLines = true;
+            _nodeTree.FullRowSelect = true;
+            _nodeTree.HideSelection = false;
+            _nodeTree.Indent = 18;
+            _nodeTree.ItemHeight = 22;
+            _nodeTree.Font = new Font("Microsoft YaHei", 9f);
+            _nodeTree.AfterSelect += NodeTree_AfterSelect;
+            NodeTreeHost.Child = _nodeTree;
         }
 
         #region 加载数据
@@ -66,7 +85,7 @@ namespace 食品信息管理系统.Views.Pages
         /// </summary>
         private void LoadMaterialNodes()
         {
-            NodeTree.Items.Clear();
+            _nodeTree.Nodes.Clear();
             try
             {
                 var cfg = MysqlDbInitializer.LoadMysqlConfig();
@@ -75,7 +94,8 @@ namespace 食品信息管理系统.Views.Pages
                 conn.Open();
                 var repo = new TreeRepository(conn, "material_nodes");
                 var nodes = repo.ListNodes(2);
-                BuildTree(NodeTree.Items, nodes, null);
+                BuildTree(_nodeTree.Nodes, nodes, null);
+                _nodeTree.ExpandAll();
             }
             catch (Exception ex)
             {
@@ -83,14 +103,14 @@ namespace 食品信息管理系统.Views.Pages
             }
         }
 
-        private static void BuildTree(ItemCollection parent, List<Dictionary<string, object>> nodes, string? parentCode)
+        private static void BuildTree(WF.TreeNodeCollection parent, List<Dictionary<string, object>> nodes, string? parentCode)
         {
             foreach (var node in nodes.Where(n => (n.GetValueOrDefault("parent_code") as string ?? string.Empty) == (parentCode ?? string.Empty)))
             {
                 var code = node.GetValueOrDefault("code") as string ?? string.Empty;
                 var title = node.GetValueOrDefault("title") as string ?? code;
-                var item = new TreeViewItem { Header = title, Tag = code };
-                BuildTree(item.Items, nodes, code);
+                var item = new WF.TreeNode { Text = title, Tag = code };
+                BuildTree(item.Nodes, nodes, code);
                 parent.Add(item);
             }
         }
@@ -107,11 +127,11 @@ namespace 食品信息管理系统.Views.Pages
             _recordView.Refresh();
         }
 
-        private void NodeTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        private void NodeTree_AfterSelect(object? sender, WF.TreeViewEventArgs e)
         {
-            if (NodeTree.SelectedItem is TreeViewItem item)
+            if (e.Node != null)
             {
-                LoadRecords(item.Tag?.ToString());
+                LoadRecords(e.Node.Tag?.ToString());
             }
         }
         #endregion
@@ -353,7 +373,7 @@ namespace 食品信息管理系统.Views.Pages
         {
             _autoRefreshTimer.Tick += (_, _) =>
             {
-                var nodeCode = NodeTree.SelectedItem is TreeViewItem item ? item.Tag?.ToString() : null;
+                var nodeCode = _nodeTree.SelectedNode?.Tag?.ToString();
                 LoadRecords(nodeCode);
             };
 

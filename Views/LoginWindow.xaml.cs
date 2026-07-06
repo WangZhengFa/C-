@@ -233,6 +233,7 @@ namespace 食品信息管理系统.Views
                         ["user_id"] = userId
                     };
                     var mainWindow = new MainAppWindow(config);
+                    Application.Current.MainWindow = mainWindow;
                     mainWindow.Show();
                     Close();
                 }

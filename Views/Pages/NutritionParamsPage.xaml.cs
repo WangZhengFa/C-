@@ -92,8 +92,6 @@ namespace 食品信息管理系统.Views.Pages
                 var hit = Contains(record.Nutrient, keyword)
                           || Contains(record.Unit, keyword)
                           || Contains(record.DailyUsageRange, keyword)
-                          || Contains(record.ParamKey, keyword)
-                          || Contains(record.ParamValue, keyword)
                           || Contains(record.Description, keyword);
                 if (!hit)
                 {

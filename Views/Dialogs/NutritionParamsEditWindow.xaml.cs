@@ -36,8 +36,6 @@ namespace 食品信息管理系统.Views.Dialogs
             IsSportsNutritionCheck.IsChecked = Value.IsSportsNutrition;
             DailyUsageRangeText.Text = Value.DailyUsageRange;
             DisabledCheck.IsChecked = Value.Disabled;
-            ParamKeyText.Text = Value.ParamKey;
-            ParamValueText.Text = Value.ParamValue;
             DescriptionText.Text = Value.Description;
         }
 
@@ -106,8 +104,6 @@ namespace 食品信息管理系统.Views.Dialogs
             Value.IsSportsNutrition = IsSportsNutritionCheck.IsChecked == true;
             Value.DailyUsageRange = DailyUsageRangeText.Text.Trim();
             Value.Disabled = DisabledCheck.IsChecked == true;
-            Value.ParamKey = ParamKeyText.Text.Trim();
-            Value.ParamValue = ParamValueText.Text.Trim();
             Value.Description = DescriptionText.Text.Trim();
 
             DialogResult = true;
@@ -138,8 +134,6 @@ namespace 食品信息管理系统.Views.Dialogs
                 IsSportsNutrition = source.IsSportsNutrition,
                 DailyUsageRange = source.DailyUsageRange,
                 Disabled = source.Disabled,
-                ParamKey = source.ParamKey,
-                ParamValue = source.ParamValue,
                 Description = source.Description,
                 UpdatedAt = source.UpdatedAt
             };

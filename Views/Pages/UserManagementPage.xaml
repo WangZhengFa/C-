@@ -1,17 +1,32 @@
 <Page x:Class="食品信息管理系统.Views.Pages.UserManagementPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      Title="用户管理入口">
-    <Grid Margin="16">
-        <Border Background="#0F172A" CornerRadius="12" Padding="20">
-            <StackPanel>
-                <TextBlock Text="用户与权限管理" Foreground="White" FontSize="24" FontWeight="Bold"/>
-                <TextBlock Text="当前菜单作为用户管理入口，实际管理界面复用现有的多标签窗口，便于继续维护用户、角色和权限。" Foreground="#D1D5DB" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                    <Button Content="打开用户管理窗口" Width="150" Height="34" Background="#4CAF50" Foreground="White" BorderThickness="0" Click="OpenWindow_Click"/>
-                    <Button Content="刷新权限提示" Width="120" Height="34" Margin="12,0,0,0" Click="RefreshButton_Click"/>
-                </StackPanel>
-            </StackPanel>
-        </Border>
-    </Grid>
+      Title="用户管理">
+    <DockPanel Margin="10">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button x:Name="BtnRefreshUsers" Content="刷新" Tag="refresh_btn" Width="90" Margin="0,0,8,0" Click="RefreshUsers_Click"/>
+            <Button x:Name="BtnAddUser" Content="新增" Tag="add_btn" Width="90" Margin="0,0,8,0" Click="AddUser_Click"/>
+            <Button x:Name="BtnEditUser" Content="编辑" Tag="edit_btn" Width="90" Margin="0,0,8,0" Click="EditUser_Click"/>
+            <Button x:Name="BtnDeleteUser" Content="删除" Tag="delete_btn" Width="90" Margin="0,0,8,0" Click="DeleteUser_Click"/>
+        </StackPanel>
+
+        <DataGrid x:Name="UsersGrid"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="70"/>
+                <DataGridTextColumn Header="用户名" Binding="{Binding Username}" Width="140"/>
+                <DataGridTextColumn Header="昵称" Binding="{Binding Nickname}" Width="120"/>
+                <DataGridTextColumn Header="部门" Binding="{Binding Department}" Width="120"/>
+                <DataGridTextColumn Header="角色ID" Binding="{Binding RoleId}" Width="90"/>
+                <DataGridTextColumn Header="角色名" Binding="{Binding RoleName}" Width="120"/>
+                <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="90"/>
+                <DataGridTextColumn Header="最后登录" Binding="{Binding LastLogin}" Width="170"/>
+                <DataGridTextColumn Header="本月登录" Binding="{Binding LoginCountMonth}" Width="90"/>
+                <DataGridTextColumn Header="累计登录" Binding="{Binding LoginCountTotal}" Width="90"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
 </Page>

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using FoodEnterpriseIMS.Database;
 using 食品信息管理系统.Views;
@@ -12,6 +13,7 @@ namespace FoodEnterpriseIMS
     public partial class App : Application
     {
         private static readonly string LogFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.log");
+        private static readonly TimeSpan StartupDbInitWaitTimeout = TimeSpan.FromSeconds(20);
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -25,8 +27,32 @@ namespace FoodEnterpriseIMS
             
             try
             {
-                MysqlDbInitializer.InitDbOnce();
-                WriteLog("数据库初始化完成");
+                var initTask = Task.Run(() => MysqlDbInitializer.InitDbOnce());
+                if (!initTask.Wait(StartupDbInitWaitTimeout))
+                {
+                    // 避免启动阶段被数据库初始化长时间阻塞，先展示登录窗口。
+                    WriteLog($"数据库初始化超过 {StartupDbInitWaitTimeout.TotalSeconds:0} 秒，已转为后台继续，不阻塞启动");
+                    _ = initTask.ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            WriteLog($"后台数据库初始化失败: {t.Exception?.GetBaseException().Message}\n{t.Exception?.GetBaseException().StackTrace}");
+                        }
+                        else
+                        {
+                            WriteLog("后台数据库初始化完成");
+                        }
+                    }, TaskScheduler.Default);
+                }
+                else
+                {
+                    if (initTask.IsFaulted)
+                    {
+                        throw initTask.Exception?.GetBaseException() ?? new InvalidOperationException("数据库初始化失败");
+                    }
+
+                    WriteLog("数据库初始化完成");
+                }
 
                 var login = new LoginWindow();
                 login.Show();

@@ -18,7 +18,6 @@ namespace FoodEnterpriseIMS.Themes
         /// </summary>
         public static Dictionary<string, object> ReadTreeGlobalConfig(DatabaseManager db)
         {
-            var (sys, tree) = ThemeConfigHelper.ReadAllConfigs(db);
             int indent = ThemeConfigHelper.CfgInt(db, "Settings", "tree_indent", 18);
             int rowH = ThemeConfigHelper.CfgInt(db, "Settings", "tree_row_height", 26);
             int indSz = ThemeConfigHelper.CfgInt(db, "Settings", "indicator_size", 12);
@@ -52,7 +51,8 @@ namespace FoodEnterpriseIMS.Themes
             bool hideRootBranch = (bool)cfg["hide_root_branch"];
             bool useSysStyle = (bool)cfg["classic_use_system"];
 
-            var leftPadding = Math.Max(0, indent / 2.0);
+            // 继续压缩缩进，让窄侧栏下层级文本尽量完整显示。
+            var leftPadding = Math.Max(0, indent / 6.0);
 
             // 通过 ItemContainerStyle 设置缩进、行高、分支线
             var itemStyle = new Style(typeof(TreeViewItem), tree.ItemContainerStyle);
@@ -161,7 +161,8 @@ namespace FoodEnterpriseIMS.Themes
 
             if (item.Template.FindName("ItemsHost", item) is FrameworkElement itemsHost)
             {
-                itemsHost.Margin = new Thickness(indicatorSize + 3, 0, 0, 0);
+                var childIndent = Math.Max(6.0, indicatorSize * 0.6);
+                itemsHost.Margin = new Thickness(childIndent, 0, 0, 0);
             }
 
             var hideCurrentBranch = hideRootBranch && depth == 0;

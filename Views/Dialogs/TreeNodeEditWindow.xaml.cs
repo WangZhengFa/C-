@@ -54,6 +54,7 @@ namespace 食品信息管理系统.Views.Dialogs
             ["ReportIssuancePage"] = "报告发放",
             ["ReportNumberingPage"] = "报告编号",
             ["RetentionManagementPage"] = "留样管理",
+            ["RolePermissionsPage"] = "角色权限",
             ["SampleDistributionPage"] = "样品分发",
             ["SamplingRecordPage"] = "取样记录",
             ["SealStampPage"] = "印章管理",

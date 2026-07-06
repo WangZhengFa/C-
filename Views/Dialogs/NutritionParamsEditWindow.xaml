@@ -64,12 +64,6 @@
                 <TextBlock Grid.Row="4" Grid.Column="2" Text="日摄入范围:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
                 <TextBox Grid.Row="4" Grid.Column="3" x:Name="DailyUsageRangeText" VerticalContentAlignment="Center"/>
 
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="参数键:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
-                <TextBox Grid.Row="5" Grid.Column="1" x:Name="ParamKeyText" VerticalContentAlignment="Center"/>
-
-                <TextBlock Grid.Row="5" Grid.Column="2" Text="参数值:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
-                <TextBox Grid.Row="5" Grid.Column="3" x:Name="ParamValueText" VerticalContentAlignment="Center"/>
-
                 <TextBlock Grid.Row="6" Grid.Column="0" Text="核心:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
                 <CheckBox Grid.Row="6" Grid.Column="1" x:Name="CoreCheck" Content="核心" VerticalAlignment="Center"/>
 

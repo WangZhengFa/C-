@@ -53,8 +53,6 @@
                 <DataGridCheckBoxColumn Header="运动营养" Binding="{Binding IsSportsNutrition}" Width="80"/>
                 <DataGridTextColumn Header="日摄入范围" Binding="{Binding DailyUsageRange}" Width="120"/>
                 <DataGridCheckBoxColumn Header="停用" Binding="{Binding Disabled}" Width="60"/>
-                <DataGridTextColumn Header="参数键" Binding="{Binding ParamKey}" Width="120"/>
-                <DataGridTextColumn Header="参数值" Binding="{Binding ParamValue}" Width="160"/>
                 <DataGridTextColumn Header="描述" Binding="{Binding Description}" Width="*"/>
             </DataGrid.Columns>
         </DataGrid>

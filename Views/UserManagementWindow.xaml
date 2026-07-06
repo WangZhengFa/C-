@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
         mc:Ignorable="d"
         Title="用户与角色权限管理" Height="700" Width="1100"
         MinHeight="560" MinWidth="900"
@@ -74,21 +75,9 @@
                             <Button x:Name="BtnUnselectAllPermissions" Content="全不选" Width="90" Margin="0,0,8,0" Click="UnselectAllPermissions_Click"/>
                             <Button x:Name="BtnSaveRolePermissions" Content="保存分配" Tag="save_btn" Width="90" Margin="0,0,8,0" Click="SaveRolePermissions_Click"/>
                         </StackPanel>
-                        <DataGrid x:Name="PermissionsGrid"
-                                  AutoGenerateColumns="False"
-                                  SelectionMode="Single"
-                                  SelectionUnit="FullRow"
-                                  CanUserAddRows="False"
-                                  CanUserDeleteRows="False">
-                            <DataGrid.Columns>
-                                <DataGridCheckBoxColumn Header="选中" Binding="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
-                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="70" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="权限键" Binding="{Binding PermissionKey}" Width="220" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="140" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="类型" Binding="{Binding NodeType}" Width="80" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="节点" Binding="{Binding NodeCode}" Width="120" IsReadOnly="True"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <Border BorderBrush="#D0D0D0" BorderThickness="1">
+                            <wfi:WindowsFormsHost x:Name="PermissionsTreeHost" Margin="4"/>
+                        </Border>
                     </DockPanel>
                 </Grid>
             </TabItem>

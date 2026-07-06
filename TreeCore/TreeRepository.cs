@@ -4,6 +4,7 @@ using System.Data;
 using System.Linq;
 using MySqlConnector;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace FoodEnterpriseIMS.TreeCore
 {
@@ -73,14 +74,45 @@ namespace FoodEnterpriseIMS.TreeCore
         private static Dictionary<string, object> ParsePayload(object? dbVal)
         {
             string json = NormalizeValue(dbVal) ?? "{}";
+            json = json.Trim();
+            if (!json.StartsWith("{") || !json.EndsWith("}"))
+            {
+                return new();
+            }
+
             try
             {
-                return JsonConvert.DeserializeObject<Dictionary<string, object>>(json)!;
+                if (JToken.Parse(json) is not JObject obj)
+                {
+                    return new();
+                }
+
+                var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                foreach (var prop in obj.Properties())
+                {
+                    dict[prop.Name] = ConvertJToken(prop.Value);
+                }
+
+                return dict;
             }
             catch
             {
                 return new();
             }
+        }
+
+        private static object ConvertJToken(JToken token)
+        {
+            return token.Type switch
+            {
+                JTokenType.String => token.ToString(),
+                JTokenType.Integer => token.Value<long>(),
+                JTokenType.Float => token.Value<double>(),
+                JTokenType.Boolean => token.Value<bool>(),
+                JTokenType.Array => token.Children().Select(ConvertJToken).ToList(),
+                JTokenType.Object => ((JObject)token).Properties().ToDictionary(p => p.Name, p => ConvertJToken(p.Value), StringComparer.OrdinalIgnoreCase),
+                _ => token.ToString()
+            };
         }
         #endregion
 

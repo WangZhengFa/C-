@@ -182,8 +182,8 @@ namespace 食品信息管理系统.Views.Pages
 
             try
             {
-                dialog.Value.Id = selected.Id;
-                _service.Update(dialog.Value);
+                var originalStandardId = selected.StandardId;
+                _service.Update(dialog.Value, originalStandardId);
                 LoadRecords();
             }
             catch (Exception ex)
@@ -207,7 +207,7 @@ namespace 食品信息管理系统.Views.Pages
 
             try
             {
-                _service.Delete(selected.Id);
+                _service.Delete(selected.StandardId);
                 LoadRecords();
             }
             catch (Exception ex)

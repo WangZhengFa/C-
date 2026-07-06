@@ -1,0 +1,46 @@
+<Page x:Class="食品信息管理系统.Views.Pages.RolePermissionsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
+      Title="角色权限">
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="3*"/>
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Grid.Column="0">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                <Button x:Name="BtnRefreshRoles" Content="刷新角色" Tag="refresh_btn" Width="90" Margin="0,0,8,0" Click="RefreshRoles_Click"/>
+                <Button x:Name="BtnAddRole" Content="新增角色" Tag="add_btn" Width="90" Margin="0,0,8,0" Click="AddRole_Click"/>
+                <Button x:Name="BtnEditRole" Content="编辑角色" Tag="edit_btn" Width="90" Margin="0,0,8,0" Click="EditRole_Click"/>
+                <Button x:Name="BtnDeleteRole" Content="删除角色" Tag="delete_btn" Width="90" Margin="0,0,8,0" Click="DeleteRole_Click"/>
+            </StackPanel>
+            <DataGrid x:Name="RolesGrid"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow"
+                      SelectionChanged="RolesGrid_SelectionChanged">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="80"/>
+                    <DataGridTextColumn Header="角色名" Binding="{Binding Name}" Width="130"/>
+                    <DataGridTextColumn Header="描述" Binding="{Binding Description}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+
+        <DockPanel Grid.Column="2">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                <Button x:Name="BtnSyncPermissions" Content="同步权限" Tag="refresh_btn" Width="90" Margin="0,0,8,0" Click="SyncPermissions_Click"/>
+                <Button x:Name="BtnSelectAllPermissions" Content="全选" Width="90" Margin="0,0,8,0" Click="SelectAllPermissions_Click"/>
+                <Button x:Name="BtnUnselectAllPermissions" Content="全不选" Width="90" Margin="0,0,8,0" Click="UnselectAllPermissions_Click"/>
+                <Button x:Name="BtnSaveRolePermissions" Content="保存分配" Tag="save_btn" Width="90" Margin="0,0,8,0" Click="SaveRolePermissions_Click"/>
+            </StackPanel>
+            <Border BorderBrush="#D0D0D0" BorderThickness="1">
+                <wfi:WindowsFormsHost x:Name="PermissionsTreeHost" Margin="4"/>
+            </Border>
+        </DockPanel>
+    </Grid>
+</Page>

@@ -22,8 +22,6 @@ namespace FoodEnterpriseIMS.Models
         public bool IsSportsNutrition { get; set; }
         public string DailyUsageRange { get; set; } = string.Empty;
         public bool Disabled { get; set; }
-        public string ParamKey { get; set; } = string.Empty;
-        public string ParamValue { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public DateTime? UpdatedAt { get; set; }
     }

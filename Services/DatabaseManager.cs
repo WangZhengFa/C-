@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using MySqlConnector;
+using Newtonsoft.Json.Linq;
 
 namespace FoodEnterpriseIMS.Services
 {
@@ -146,20 +147,25 @@ namespace FoodEnterpriseIMS.Services
                     {
                         try
                         {
-                            var payload = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(payloadJson);
-                            if (payload != null)
+                            var text = payloadJson.Trim();
+                            if (!text.StartsWith("{") || !text.EndsWith("}"))
                             {
-                                if (payload.ContainsKey("component_path"))
+                                continue;
+                            }
+
+                            if (JToken.Parse(text) is JObject payload)
+                            {
+                                if (payload.TryGetValue("component_path", StringComparison.OrdinalIgnoreCase, out var componentPath))
                                 {
-                                    menuItem["component_path"] = payload["component_path"];
+                                    menuItem["component_path"] = componentPath.ToString();
                                 }
-                                if (payload.ContainsKey("csharp_component_path"))
+                                if (payload.TryGetValue("csharp_component_path", StringComparison.OrdinalIgnoreCase, out var csPath))
                                 {
-                                    menuItem["csharp_component_path"] = payload["csharp_component_path"];
+                                    menuItem["csharp_component_path"] = csPath.ToString();
                                 }
-                                if (payload.ContainsKey("csharp_class"))
+                                if (payload.TryGetValue("csharp_class", StringComparison.OrdinalIgnoreCase, out var csClass))
                                 {
-                                    menuItem["csharp_class"] = payload["csharp_class"];
+                                    menuItem["csharp_class"] = csClass.ToString();
                                 }
                             }
                         }
@@ -634,15 +640,25 @@ namespace FoodEnterpriseIMS.Services
                     SELECT id, permission_key, name, node_type, node_code, description
                     FROM permissions
                     WHERE node_type IN ('menu','button')
-                    ORDER BY node_type, id";
+                    ORDER BY node_type, id DESC";
                 using var cmd = new MySqlCommand(sql, conn);
                 using var reader = cmd.ExecuteReader();
+
+                // 旧库可能缺失唯一约束导致相同 permission_key 存在多条记录。
+                // UI 侧按 permission_key 去重，优先保留最新 id 的记录。
+                var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 while (reader.Read())
                 {
+                    var permissionKey = reader.GetString("permission_key");
+                    if (!seenKeys.Add(permissionKey))
+                    {
+                        continue;
+                    }
+
                     list.Add(new Dictionary<string, object>
                     {
                         ["id"] = reader.GetInt64("id"),
-                        ["permission_key"] = reader.GetString("permission_key"),
+                        ["permission_key"] = permissionKey,
                         ["name"] = reader.IsDBNull(reader.GetOrdinal("name")) ? string.Empty : reader.GetString("name"),
                         ["node_type"] = reader.IsDBNull(reader.GetOrdinal("node_type")) ? string.Empty : reader.GetString("node_type"),
                         ["node_code"] = reader.IsDBNull(reader.GetOrdinal("node_code")) ? string.Empty : reader.GetString("node_code"),
@@ -780,6 +796,58 @@ WHERE p.node_type='button'
   AND mb.id IS NULL;", conn, tx))
                 {
                     cleanupButtonCmd.ExecuteNonQuery();
+                }
+
+                // 兼容历史库未生效唯一约束导致 permission_key 重复的场景：
+                // 1) 将角色权限映射到每个 permission_key 的最小 id
+                // 2) 删除重复 permission 记录，仅保留一条
+                using (var normalizeRolePermCmd = new MySqlCommand(@"
+UPDATE role_permissions rp
+JOIN permissions p ON p.id = rp.permission_id
+JOIN (
+    SELECT permission_key, MIN(id) AS keep_id
+    FROM permissions
+    GROUP BY permission_key
+) k ON k.permission_key = p.permission_key
+SET rp.permission_id = k.keep_id;", conn, tx))
+                {
+                    normalizeRolePermCmd.ExecuteNonQuery();
+                }
+
+                using (var dedupePermissionsCmd = new MySqlCommand(@"
+DELETE p
+FROM permissions p
+JOIN (
+    SELECT permission_key, MIN(id) AS keep_id
+    FROM permissions
+    GROUP BY permission_key
+) k ON k.permission_key = p.permission_key
+WHERE p.id <> k.keep_id;", conn, tx))
+                {
+                    dedupePermissionsCmd.ExecuteNonQuery();
+                }
+
+                try
+                {
+                    using var ensureUniqueCmd = new MySqlCommand("ALTER TABLE permissions ADD UNIQUE KEY uk_perm_key (permission_key);", conn, tx);
+                    ensureUniqueCmd.ExecuteNonQuery();
+                }
+                catch (MySqlException ex) when (ex.Number == 1061)
+                {
+                    // 索引已存在
+                }
+                catch (MySqlException ex) when (ex.Number == 1170)
+                {
+                    // 历史库可能是 TEXT 字段，回退到前缀唯一索引。
+                    try
+                    {
+                        using var ensureUniquePrefixCmd = new MySqlCommand("ALTER TABLE permissions ADD UNIQUE KEY uk_perm_key (permission_key(191));", conn, tx);
+                        ensureUniquePrefixCmd.ExecuteNonQuery();
+                    }
+                    catch (MySqlException fallbackEx) when (fallbackEx.Number == 1061)
+                    {
+                        // 索引已存在
+                    }
                 }
 
                 using (var cleanupRolePermCmd = new MySqlCommand(@"
