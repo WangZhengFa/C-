@@ -31,6 +31,7 @@ namespace 食品信息管理系统.Views.Pages
         private readonly DispatcherTimer _autoRefreshTimer = new DispatcherTimer();
         private ObservableCollection<QualitySupervision> _records;
         private readonly ICollectionView _recordView;
+        private readonly DataGridSettingsManager _columnSettingsManager;
         private const string AutoRefreshSecondsKey = "quality_supervision.auto_refresh_seconds";
         private const string DefaultExportDirectoryKey = "quality_supervision.default_export_dir";
 
@@ -49,10 +50,12 @@ namespace 食品信息管理系统.Views.Pages
             _recordView = CollectionViewSource.GetDefaultView(_records);
             _recordView.Filter = RecordFilter;
             RecordGrid.ItemsSource = _recordView;
+            _columnSettingsManager = new DataGridSettingsManager(RecordGrid, "quality_supervision");
             ApplyButtonPermissions();
             InitAutoRefresh();
             LoadRecords();
             InitFilterOptions();
+            _columnSettingsManager.LoadAndApply();
         }
 
         private void LoadRecords()
@@ -159,111 +162,7 @@ namespace 食品信息管理系统.Views.Pages
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            var currentSeconds = GetPageSetting(AutoRefreshSecondsKey);
-            var currentDirectory = GetPageSetting(DefaultExportDirectoryKey);
-
-            var dialog = new Window
-            {
-                Title = "质量监督设置",
-                Width = 460,
-                Height = 230,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                ResizeMode = ResizeMode.NoResize,
-                Owner = Window.GetWindow(this)
-            };
-
-            var grid = new Grid { Margin = new Thickness(12) };
-            for (var i = 0; i < 4; i++)
-            {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            }
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var lblSeconds = new TextBlock { Text = "自动刷新秒数(0关闭):", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 8, 6) };
-            Grid.SetRow(lblSeconds, 0);
-            Grid.SetColumn(lblSeconds, 0);
-            grid.Children.Add(lblSeconds);
-
-            var secondsCombo = new ComboBox
-            {
-                IsEditable = true,
-                IsTextSearchEnabled = true,
-                Margin = new Thickness(0, 6, 0, 6)
-            };
-            secondsCombo.Items.Add("0");
-            secondsCombo.Items.Add("10");
-            secondsCombo.Items.Add("30");
-            secondsCombo.Items.Add("60");
-            secondsCombo.Items.Add("120");
-            secondsCombo.Items.Add("300");
-            secondsCombo.Text = string.IsNullOrWhiteSpace(currentSeconds) ? "0" : currentSeconds;
-            Grid.SetRow(secondsCombo, 0);
-            Grid.SetColumn(secondsCombo, 1);
-            grid.Children.Add(secondsCombo);
-
-            var lblDir = new TextBlock { Text = "默认导出目录:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 8, 6) };
-            Grid.SetRow(lblDir, 1);
-            Grid.SetColumn(lblDir, 0);
-            grid.Children.Add(lblDir);
-
-            var txtDir = new TextBox { Text = currentDirectory ?? string.Empty, Margin = new Thickness(0, 6, 0, 6) };
-            Grid.SetRow(txtDir, 1);
-            Grid.SetColumn(txtDir, 1);
-            grid.Children.Add(txtDir);
-
-            var hint = new TextBlock
-            {
-                Text = "提示：默认导出目录留空则使用系统默认目录。",
-                Margin = new Thickness(0, 8, 0, 0),
-                Opacity = 0.8
-            };
-            Grid.SetRow(hint, 2);
-            Grid.SetColumn(hint, 0);
-            Grid.SetColumnSpan(hint, 2);
-            grid.Children.Add(hint);
-
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            var btnSave = new Button { Content = "保存", Width = 86, Margin = new Thickness(0, 10, 8, 0) };
-            var btnCancel = new Button { Content = "取消", Width = 86, Margin = new Thickness(0, 10, 0, 0) };
-
-            btnSave.Click += (_, _) =>
-            {
-                if (!int.TryParse(secondsCombo.Text.Trim(), out var seconds) || seconds < 0)
-                {
-                    MessageBox.Show("自动刷新秒数必须是大于等于 0 的整数。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                var dir = txtDir.Text.Trim();
-                if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
-                {
-                    MessageBox.Show("默认导出目录不存在，请检查后再保存。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                _db.SetSystemConfig("page", AutoRefreshSecondsKey, seconds.ToString());
-                _db.SetSystemConfig("page", DefaultExportDirectoryKey, dir);
-                ApplyAutoRefresh(seconds);
-                dialog.DialogResult = true;
-                dialog.Close();
-            };
-
-            btnCancel.Click += (_, _) => dialog.Close();
-            buttons.Children.Add(btnSave);
-            buttons.Children.Add(btnCancel);
-            Grid.SetRow(buttons, 5);
-            Grid.SetColumn(buttons, 1);
-            grid.Children.Add(buttons);
-
-            dialog.Content = grid;
-            var saved = dialog.ShowDialog();
-            if (saved == true)
-            {
-                MessageBox.Show("设置已保存。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+            _columnSettingsManager.OpenSettingsDialog(Window.GetWindow(this));
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)

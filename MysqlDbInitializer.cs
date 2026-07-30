@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -726,9 +726,11 @@ CREATE TABLE IF NOT EXISTS `column_settings` (
   `column_width_settings` TEXT,
   `fixed_column_width_settings` TEXT,
   `row_height` INT DEFAULT 20,
+  `font_size` INT DEFAULT 12,
   `table_height_enabled` TINYINT(1) DEFAULT 0,
   `table_height_mode` VARCHAR(50) DEFAULT '',
   `table_height` INT DEFAULT 300,
+  `max_display_rows` INT DEFAULT 0,
   `left_columns` TEXT,
   `center_columns` TEXT,
   `right_columns` TEXT,

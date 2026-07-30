@@ -830,6 +830,18 @@ namespace FoodEnterpriseIMS
                     return;
                 }
 
+                var menuItem = _db.GetMenuByKey(pageKey);
+                if (menuItem != null)
+                {
+                    var title = menuItem.ContainsKey("title") ? menuItem["title"].ToString() : pageKey;
+                    var action = GetSpecialActionByTitle(title);
+                    if (!string.IsNullOrEmpty(action))
+                    {
+                        HandleSpecialActions(action);
+                        return;
+                    }
+                }
+
                 RefreshRolePermissionsCache();
                 if (_menuKeyMap.Count == 0)
                 {
@@ -843,23 +855,38 @@ namespace FoodEnterpriseIMS
                     return;
                 }
 
-                var menuItem = _db.GetMenuByKey(pageKey);
                 if (menuItem == null) return;
 
-                var title = menuItem.ContainsKey("title") ? menuItem["title"].ToString() : pageKey;
+                var pageTitle = menuItem.ContainsKey("title") ? menuItem["title"].ToString() : pageKey;
                 var compPath = menuItem.ContainsKey("csharp_component_path")
                     ? menuItem["csharp_component_path"].ToString()
                     : "";
                 var csharpClass = menuItem.ContainsKey("csharp_class") ? menuItem["csharp_class"].ToString() : "";
                 if (!string.IsNullOrWhiteSpace(csharpClass) || !string.IsNullOrWhiteSpace(compPath))
                 {
-                    ShowContentPage(pageKey, title, csharpClass, compPath);
+                    ShowContentPage(pageKey, pageTitle, csharpClass, compPath);
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"打开页面失败：{ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 根据菜单标题识别特殊操作（用于树节点编码不是标准 key 的情况）
+        /// </summary>
+        private static string? GetSpecialActionByTitle(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return null;
+            var t = title.Trim();
+            if (t.Contains("重新登录") || t.Contains("重启")) return "relogin";
+            if (t.Contains("退出")) return "exit_system";
+            if (t.Contains("修改密码")) return "change_password";
+            if (t.Contains("关于")) return "about";
+            if (t.Contains("主题")) return "theme_settings";
+            if (t.Contains("树样式")) return "tree_style_settings";
+            return null;
         }
 
         /// <summary>
@@ -912,6 +939,11 @@ namespace FoodEnterpriseIMS
                             var supervisionPage = new QualitySupervisionPage(_currentRole, _db);
                             supervisionPage.CloseRequested += (s, e) => CloseContentPage();
                             page = supervisionPage;
+                            break;
+                        case "sample_distribution":
+                            var distributionPage = new SampleDistributionPage(_currentRole, _db);
+                            distributionPage.CloseRequested += (s, e) => CloseContentPage();
+                            page = distributionPage;
                             break;
                         default:
                             page = new TextBlock { Text = $"页面：{title}", FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -1099,6 +1131,9 @@ namespace FoodEnterpriseIMS
                     case QualitySupervisionPage supervisionPage:
                         supervisionPage.RefreshPermissionState();
                         break;
+                    case SampleDistributionPage distributionPage:
+                        distributionPage.RefreshPermissionState();
+                        break;
                 }
             }
         }
@@ -1228,7 +1263,7 @@ namespace FoodEnterpriseIMS
             dialog.ShowDialog();
         }
 
-        private void Relogin()
+        private async void Relogin()
         {
             var result = MessageBox.Show("确定重新登录吗？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes)
@@ -1238,18 +1273,18 @@ namespace FoodEnterpriseIMS
 
             try
             {
-                AuthService.MarkLogoutAsync(_currentUserId).GetAwaiter().GetResult();
+                await AuthService.MarkLogoutAsync(_currentUserId);
             }
             catch (Exception ex)
             {
                 WriteLog($"[Relogin] 回写离线状态失败: {ex.Message}");
             }
 
+            _isReloginInProgress = true;
+
             var loginWindow = new 食品信息管理系统.Views.LoginWindow();
             Application.Current.MainWindow = loginWindow;
             loginWindow.Show();
-
-            _isReloginInProgress = true;
             Close();
         }
 

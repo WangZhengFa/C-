@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using FoodEnterpriseIMS.Models;
+using FoodEnterpriseIMS.Services;
 
 namespace 食品信息管理系统.Views.Dialogs
 {
@@ -12,24 +13,49 @@ namespace 食品信息管理系统.Views.Dialogs
     public partial class SampleDistributionEditWindow : Window
     {
         public SampleDistributionRecord Value { get; private set; }
+        public bool IsNew { get; private set; }
+
+        private SampleDistributionRecord? _originalSource;
+        private readonly IEnumerable<SampleDistributionRecord> _existing;
+        private readonly SampleDistributionService _service = new();
 
         public SampleDistributionEditWindow(SampleDistributionRecord? source, IEnumerable<SampleDistributionRecord> existing)
         {
             InitializeComponent();
-            Value = source == null ? new SampleDistributionRecord { ReceiveSendDate = DateTime.Today } : Clone(source);
-            InitCombos(existing);
+            _originalSource = source;
+            _existing = existing;
+            IsNew = source == null;
+            Value = source == null ? CreateNewRecord() : Clone(source);
+            InitCombos();
             BindValue();
         }
 
-        private void InitCombos(IEnumerable<SampleDistributionRecord> existing)
+        private static SampleDistributionRecord CreateNewRecord()
+        {
+            return new SampleDistributionRecord
+            {
+                ReceiveSendDate = DateTime.Today
+            };
+        }
+
+        private void InitCombos()
         {
             SampleSourceCombo.Items.Clear();
-            foreach (var source in existing.Select(x => x.SampleSource)
+            foreach (var source in _existing.Select(x => x.SampleSource)
                                            .Where(x => !string.IsNullOrWhiteSpace(x))
                                            .Distinct()
                                            .OrderBy(x => x))
             {
                 SampleSourceCombo.Items.Add(source);
+            }
+
+            var defaults = new[] { "生产企业", "流通环节", "餐饮环节", "网络抽样", "其他" };
+            foreach (var d in defaults)
+            {
+                if (!SampleSourceCombo.Items.Contains(d))
+                {
+                    SampleSourceCombo.Items.Add(d);
+                }
             }
         }
 
@@ -50,19 +76,44 @@ namespace 食品信息管理系统.Views.Dialogs
             RemarkText.Text = Value.Remark;
         }
 
+        private void NewButton_Click(object sender, RoutedEventArgs e)
+        {
+            IsNew = true;
+            _originalSource = null;
+            Value = CreateNewRecord();
+            Value.ReceiveSendId = GenerateReceiveSendId();
+            BindValue();
+        }
+
+        private void ResetButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_originalSource != null)
+            {
+                Value = Clone(_originalSource);
+                IsNew = false;
+            }
+            else
+            {
+                Value = CreateNewRecord();
+                Value.ReceiveSendId = GenerateReceiveSendId();
+                IsNew = true;
+            }
+            BindValue();
+        }
+
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
             var id = ReceiveSendIdText.Text.Trim();
             if (string.IsNullOrWhiteSpace(id))
             {
-                MessageBox.Show(this, "收发编号不能为空", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, "分发ID不能为空", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             var sampleName = SampleNameText.Text.Trim();
             if (string.IsNullOrWhiteSpace(sampleName))
             {
-                MessageBox.Show(this, "样品名称不能为空", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, "检品名称不能为空", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -84,9 +135,24 @@ namespace 食品信息管理系统.Views.Dialogs
             Close();
         }
 
-        private void CancelButton_Click(object sender, RoutedEventArgs e)
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        private string GenerateReceiveSendId()
+        {
+            var prefix = $"FY-{DateTime.Today:yyyyMMdd}-";
+            var maxSeq = _existing
+                .Where(x => !string.IsNullOrWhiteSpace(x.ReceiveSendId) && x.ReceiveSendId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .Select(x =>
+                {
+                    var suffix = x.ReceiveSendId.Substring(prefix.Length);
+                    return int.TryParse(suffix, out var n) ? n : 0;
+                })
+                .DefaultIfEmpty(0)
+                .Max();
+            return $"{prefix}{(maxSeq + 1):D3}";
         }
 
         private static SampleDistributionRecord Clone(SampleDistributionRecord source)

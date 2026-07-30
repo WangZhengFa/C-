@@ -13,15 +13,29 @@ namespace FoodEnterpriseIMS.Services
     {
         public List<SampleDistributionRecord> ListAll()
         {
-            const string sql = @"SELECT id, receive_send_id, receive_send_date, inspection_date, report_date,
+            return ListByNodeCode(null);
+        }
+
+        public List<SampleDistributionRecord> ListByNodeCode(string? nodeCode)
+        {
+            var sql = @"SELECT id, receive_send_id, receive_send_date, inspection_date, report_date,
 sample_name, sample_batch, sample_quantity, retention_quantity, representative_quantity,
 sample_source, is_reinspection, remark, node_code
 FROM sample_receive_send
-ORDER BY id DESC";
+WHERE 1=1";
+
+            var pars = new List<MySqlParameter>();
+            if (!string.IsNullOrWhiteSpace(nodeCode))
+            {
+                sql += " AND node_code = @nodeCode";
+                pars.Add(new MySqlParameter("@nodeCode", nodeCode));
+            }
+            sql += " ORDER BY id DESC";
 
             var result = new List<SampleDistributionRecord>();
             using var conn = CreateConnection();
             using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddRange(pars.ToArray());
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
